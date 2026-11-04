@@ -10,12 +10,15 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "^7.3.1",
-    "@tsconfig/svelte": "^5.0.8",
-    "@types/node": "^24.19.2",
-    "svelte": "^5.57.2",
-    "svelte-check": "^4.7.7",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.5"
+    "@sveltejs/vite-plugin-svelte": "latest",
+    "@tsconfig/svelte": "latest",
+    "@types/node": "latest",
+    "svelte": "latest",
+    "svelte-check": "latest",
+    "typescript": "latest",
+    "vite": "latest"
+  },
+  "dependencies": {
+    "@jax-js/jax": "latest"
   }
 }
