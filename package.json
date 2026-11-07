@@ -19,6 +19,8 @@
     "vite": "latest"
   },
   "dependencies": {
-    "@jax-js/jax": "latest"
+    "@jax-js/jax": "latest",
+    "@jax-js/loaders": "latest",
+    "@jax-js/optax": "latest"
   }
 }
