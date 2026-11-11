@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Vitest reports and artifacts
+.vitest/
+
+# Assets
+assets
+public/assets

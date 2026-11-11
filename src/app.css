@@ -52,7 +52,7 @@ h2 {
   color: var(--text-h);
 }
 
-.button {
+button {
   padding: 20px;
   border-radius: 5px;
   color: var(--accent);

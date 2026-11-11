@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test": "vitest",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
@@ -16,11 +17,14 @@
     "svelte": "latest",
     "svelte-check": "latest",
     "typescript": "latest",
-    "vite": "latest"
+    "vite": "latest",
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "@jax-js/jax": "latest",
     "@jax-js/loaders": "latest",
-    "@jax-js/optax": "latest"
+    "@jax-js/optax": "latest",
+    "opfs-worker": "^2.3.1",
+    "png-js": "^2.0.0"
   }
 }
