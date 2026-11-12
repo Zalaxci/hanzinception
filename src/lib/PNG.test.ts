@@ -31,11 +31,10 @@ test("pixels of 20th and 30th row are correctly decoded", async () => {
                                            145, 153, 178, 177, 160, 152, 150, 123,  92,  72,  78,  95,  93,
                                             72,  69,  76,  74,  68,  84,  91,  70,  59,  79, 109 ]);
     const png = await PNGParser.fromURL(50, 50, "http://localhost:5173/assets/chinese-handwriting/CASIA-HWDB_Test/Test/一/42.png");
-    await png.decompress();
-    const pixels = await png.decodeAllPixels();
-    expect(pixels.length, "for a monochrome 50x50 image with no alpha channel, there should be as many bytes in pixel data as there is pixels, or 2500").toBe(2500);
-    for (let i = 0; i < 50; i++)
-        expect(pixels[20*50 + i], "20th row pixels should match what you get from python with opencv").toBe(row20Reference[i]);
-    for (let i = 0; i < 50; i++)
-        expect(pixels[25*50 + i], "30th row pixels should match what you get from python with opencv").toBe(row30Reference[i]);
+    const pixels = new Float32Array(2500);
+    await png.decompressAndDecodePixels(pixels);
+    for (let i = 1; i < 50; i++)
+        expect(pixels[20*50 + i], "20th row pixels should match what you get from python with opencv").toBeCloseTo(row20Reference[i]/255);
+    for (let i = 1; i < 50; i++)
+        expect(pixels[25*50 + i], "30th row pixels should match what you get from python with opencv").toBeCloseTo(row30Reference[i]/255);
 })

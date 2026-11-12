@@ -111,13 +111,15 @@ export default class PNGParser {
       switch (this.decompressedData[this.dpos++]) {
         case 0: // None
           for (i = 0; i < scanlineLength; i++)
-            buffer[c++] = this.decompressedData[this.dpos++]/255;
+            buffer[c++] = this.decompressedData[this.dpos++];
           break;
 
         case 1: // Sub
-          for (i = 0; i < scanlineLength; i++)
-            buffer[c++] = i < this.nbytesPerPixel? this.decompressedData[this.dpos++]/255 :
-                                                 ((this.decompressedData[this.dpos++] + buffer[c - this.nbytesPerPixel]) % 256)/255;
+          for (i = 0; i < scanlineLength; i++) {
+            byte = this.decompressedData[this.dpos++];
+            left = i < this.nbytesPerPixel ? 0 : buffer[c - this.nbytesPerPixel];
+            buffer[c++] = (byte + left) % 256;
+          }
           break;
 
         case 2: // Up
@@ -131,7 +133,7 @@ export default class PNGParser {
                   col * this.nbytesPerPixel +
                   (i % this.nbytesPerPixel)
               ];
-            buffer[c++] = ((upper + byte) % 256)/255;
+            buffer[c++] = (upper + byte) % 256;
           }
           break;
 
@@ -147,7 +149,7 @@ export default class PNGParser {
                   col * this.nbytesPerPixel +
                   (i % this.nbytesPerPixel)
               ];
-            buffer[c++] = ((byte + Math.floor((left + upper) / 2)) % 256)/255;
+            buffer[c++] = (byte + Math.floor((left + upper) / 2)) % 256;
           }
           break;
 
@@ -189,7 +191,7 @@ export default class PNGParser {
               paeth = upperLeft;
             }
 
-            buffer[c++] = ((byte + paeth) % 256)/255;
+            buffer[c++] = (byte + paeth) % 256;
           }
           break;
 
@@ -232,6 +234,23 @@ export default class PNGParser {
       this.decodeSegment(outputArr, offset, 0, 1, 1, 2); // 7
     } else {
       this.decodeSegment(outputArr, offset, 0, 0, 1, 1, true);
+    }
+    const nbytesInImage = this.width * this.height * this.nbytesPerPixel;
+    for (let i = 0; i < nbytesInImage; i++) outputArr[offset + i] /= 255;
+  }
+  // Copy pixels without reverse filtering - this seems to make the neural network converge
+  async decompressAndCopyPixels(outputArr: Float32Array<ArrayBuffer>, offset: number = 0) {
+    await this.decompress();
+    // Ensure decompressed data is non-null
+    if (this.decompressedData === null)
+      throw new Error("png 'decompressedData' shouldn't be null after calling decompress method to deflate data");
+    const scanlineLength = this.nbytesPerPixel * this.width;
+    let row = 0;
+    let c = offset;
+    while (row < this.height && this.dpos < this.decompressedData.length) {
+        for (let i = 0; i < scanlineLength; i++)
+          outputArr[c++] = this.decompressedData[this.dpos++] / 255;
+        row++;
     }
   }
 }
