@@ -69,19 +69,19 @@ button {
 
 #app {
   max-width: 100%;
+  min-height: 100svh;
   margin: 0 auto;
   text-align: center;
-  min-height: 100svh;
   display: flex;
-  flex-direction: column;
   box-sizing: border-box;
 }
-
-#center {
-  display: flex;
+.main-column {
   flex-direction: column;
+  flex-grow: 1;
+}
+.row, .main-column {
+  display: flex;
   gap: 25px;
   place-content: center;
   place-items: center;
-  flex-grow: 1;
 }

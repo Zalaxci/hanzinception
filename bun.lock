@@ -9,6 +9,7 @@
         "@jax-js/loaders": "latest",
         "@jax-js/optax": "latest",
         "opfs-worker": "^2.3.1",
+        "p-throttle": "^8.1.1",
         "png-js": "^2.0.0",
       },
       "devDependencies": {
@@ -217,6 +218,8 @@
     "obug": ["obug@2.2.1", "", {}, "sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q=="],
 
     "opfs-worker": ["opfs-worker@2.3.1", "", { "dependencies": { "comlink": "^4.4.2", "minimatch": "^10.0.3" }, "peerDependencies": { "typescript": ">=5.0.0" } }, "sha512-vxJ0cdIAC5k0RcGfHASYM1robWFfWonaUKv66Wp5RuqbTOGAOUj1iJfUCIWI1fIL6b0GhP9a0pH8ipo4grXS7w=="],
+
+    "p-throttle": ["p-throttle@8.1.1", "", {}, "sha512-xxWFBUyvbrQ10XC3VAr0SoXoOCKXqCX/yvbFIkBE98upphHFwjIKR6AId13ZH3jngFfF6yK43QTOtrngYAmFMA=="],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 

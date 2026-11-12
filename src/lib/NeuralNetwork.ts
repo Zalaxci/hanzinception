@@ -82,10 +82,10 @@ export class NeuralNetworkModel {
             return loss;
         });
     }
-    async initRandom(key: np.Array) {
+    async initRandom() {
         const totalLayers = this._modelStructure.length // Total layer count, including input & output
         const nlayers = totalLayers - 1; // Number of hidden layers plus output
-        const keys = random.split(key, 2*nlayers)
+        const keys = random.split(random.key(Date.now()), 2*nlayers)
         const keysIterator = keys[Symbol.iterator]()
         for (let i = 0; i < nlayers; i++) {
             const bound = 1 / Math.sqrt(this._modelStructure[i])
@@ -109,9 +109,6 @@ export class NeuralNetworkModel {
             this._jitPredictor(tree.ref(this._layerWeights), input)
         )
     }
-    ignoreTrainingExample(iepoch: number, input: np.Array, labels: np.Array, loss: number) {
-        return false;
-    }
     async* train(inputIterable: AsyncGenerator<np.Array>, labelsIterable: AsyncGenerator<np.Array>, nbatches: number, nepochs: number, optimizerOrLearningRate: GradientTransformation | number): AsyncGenerator<TrainMetrics> {
         const optimizer = typeof optimizerOrLearningRate === "number"? adam(optimizerOrLearningRate) : optimizerOrLearningRate;
         const evaluateValueAndGradientAtOnce = this._getAutodifPredictor();
@@ -124,30 +121,31 @@ export class NeuralNetworkModel {
                 let curr_labels = await labelsIterable.next();
                 for (let ibatch = 0; ibatch < nbatches; ibatch++) {
                     const [lossVal, derivativeOverWeights] = evaluateValueAndGradientAtOnce(tree.ref(this._layerWeights), curr_input.value.ref, curr_labels.value.ref);
-                    const lossAsNumber = await lossVal.jsAsync();
-                    if (isNaN(lossAsNumber)) {
-                        console.error("LOSS IS `NOT A NUMBER` (NaN) - ABORTING!");
-                        const prediction = this.predict(curr_input.value);
-                        console.log("Predicted log probabilities: ", await prediction._logits.jsAsync());
-                        console.log("Actual class is: ", await curr_labels.value.jsAsync());
-                        return;
-                    }
-                    yield { iepoch, ibatch, loss: lossAsNumber };
+                    if (ibatch % 10 === 0) {
+                        const lossAsNumber = await lossVal.jsAsync();
+                        if (isNaN(lossAsNumber)) {
+                            console.error("LOSS IS `NOT A NUMBER` (NaN) - ABORTING!");
+                            const prediction = this.predict(curr_input.value);
+                            console.log("Predicted log probabilities: ", await prediction._logits.jsAsync());
+                            console.log("Actual class is: ", await curr_labels.value.jsAsync());
+                            return;
+                        }
+                        yield { iepoch, ibatch, loss: lossAsNumber };
+                        // If loss smaller than 0.03 return; memory will be cleared in the "finally" block
+                        if (lossAsNumber < 0.03) return;
+                    } else lossVal.dispose();
                     curr_input.value.dispose();
                     curr_labels.value.dispose();
-                    if (this.ignoreTrainingExample(iepoch, curr_input.value, curr_labels.value, lossAsNumber)) {
-                        console.log("Ignoring example...");
-                        tree.dispose(derivativeOverWeights);
-                        [curr_input, curr_labels] = await Promise.all([ inputIterable.next(), labelsIterable.next() ]);
-                    } else {
-                        [updates, optState] = optimizer.update(derivativeOverWeights, optState);
-                        this._layerWeights = applyUpdates(this._layerWeights, updates);
+                    [updates, optState] = optimizer.update(derivativeOverWeights, optState);
+                    this._layerWeights = applyUpdates(this._layerWeights, updates);
+                    if (ibatch % 6 === 0)
                         [curr_input, curr_labels] = await Promise.all([ inputIterable.next(), labelsIterable.next(), blockUntilReady(this._layerWeights) ]);
-                    }
-                    // If loss smaller than 0.01 return; memory will be cleared in the "finally" block
-                    if (lossAsNumber < 0.01) return;
+                    else
+                        [curr_input, curr_labels] = await Promise.all([ inputIterable.next(), labelsIterable.next() ]);
                 }
             }
+        } catch(e) {
+            console.warn("training error: " + e);
         } finally {
             console.log("Clearing training function memory!");
             tree.dispose(optState);
@@ -157,11 +155,11 @@ export class NeuralNetworkModel {
 export class HanziRecognizer3LayerMLP extends NeuralNetworkModel {
     constructor() {
         super(
-            [2500, 400, 300, 200, hanziList.length, hanziList.length],
+            [2500, 500, 400, 300, 200, 200, hanziList.length],
             (w: np.Array[], x: np.Array): np.Array => {
                 // Use np.dot as JAX.js' creators use that for MNIST, and matmul goes over array indices as string which might be slower
                 const z1 = np.dot(x, w[0]).add(w[1])
-                // Hidden layers use softplus
+                // Hidden layers use ReLU
                 const a1 = nn.relu(z1)
                 const z2 = np.dot(a1, w[2]).add(w[3])
                 const a2 = nn.relu(z2)
@@ -169,23 +167,13 @@ export class HanziRecognizer3LayerMLP extends NeuralNetworkModel {
                 const a3 = nn.relu(z3)
                 const z4 = np.dot(a3, w[6]).add(w[7])
                 const a4 = nn.relu(z4)
-                // Final layer uses softmax
                 const z5 = np.dot(a4, w[8]).add(w[9])
-                return nn.logSoftmax(z5)
+                const a5 = nn.relu(z5)
+                // Final layer uses softmax
+                const z6 = np.dot(a5, w[10]).add(w[11])
+                return nn.logSoftmax(z6)
             }
         )
-    }
-    ignoreTrainingExample(iepoch: number, input: np.Array, labels: np.Array, loss: number): boolean {
-        switch (iepoch) {
-            case 0:
-                return false;
-            case 1:
-                return loss > 3;
-            case 2:
-                return loss > 2.4;
-            default:
-                return loss > 2;
-        }
     }
 }
 export class NeuralNetworkManager {
@@ -208,7 +196,7 @@ export class NeuralNetworkManager {
     async initRandom() {
         // Initialize each model with a random key - pass in current time in milliseconds in "random.key", though I'm not sure if this is necessary or even capable of guaranteeing different random values per model
         for (let modelId of this._enabledModels)
-            await this._models[modelId].initRandom(random.key(Date.now()))
+            await this._models[modelId].initRandom();
     }
     async train(inputIterable: AsyncGenerator<np.Array>, labelsIterable: AsyncGenerator<np.Array>, nbatches: number, nepochs: number, learningRate: number = 0.008) {
         const adamOptimizer = adam(learningRate);

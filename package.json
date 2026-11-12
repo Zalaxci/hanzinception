@@ -25,6 +25,7 @@
     "@jax-js/loaders": "latest",
     "@jax-js/optax": "latest",
     "opfs-worker": "^2.3.1",
+    "p-throttle": "^8.1.1",
     "png-js": "^2.0.0"
   }
 }

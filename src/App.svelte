@@ -5,10 +5,8 @@
   let imagesAreDownloaded = $state(false);
 </script>
 
-<section id="center">
-  {#if imagesAreDownloaded}
-    <NeuralNetworkTraining/>
-  {:else}
-    <ImageDownloadView notifyImagesDownloaded={() => imagesAreDownloaded=true}/>
-  {/if}
-</section>
+{#if imagesAreDownloaded}
+  <NeuralNetworkTraining/>
+{:else}
+  <ImageDownloadView notifyImagesDownloaded={() => imagesAreDownloaded=true}/>
+{/if}
