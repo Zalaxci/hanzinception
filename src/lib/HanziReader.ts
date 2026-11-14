@@ -2,8 +2,8 @@ import { numpy as np, tree } from "@jax-js/jax";
 import PNGParser from "./PNG";
 
 export const hanziList = ["一", "九", "人", "做", "几", "叫", "商", "多", "字", "年", "时", "本", "气", "狗", "米", "见", "谁", "院", "七", "习", "什", "儿", "出", "吃", "喂", "大", "学", "店", "明", "机", "水", "猫", "系", "视", "谢", "雨", "三", "书", "今", "先", "分", "同", "喜", "天", "客", "开", "星", "来", "汉", "现", "老", "觉", "起", "零", "上", "买", "他", "八", "前", "名", "喝", "太", "家", "影", "昨", "杯", "没", "生", "能", "认", "车", "面", "下", "了", "们", "六", "北", "后", "四", "女", "对", "很", "是", "果", "漂", "电", "脑", "识", "这", "飞", "不", "二", "会", "关", "医", "吗", "回", "她", "小", "怎", "月", "校", "火", "的", "苹", "话", "那", "饭", "东", "五", "住", "兴", "十", "听", "国", "好", "少", "想", "有", "样", "点", "看", "茶", "语", "都", "馆", "个", "些", "作", "再", "午", "呢", "在", "妈", "岁", "我", "朋", "桌", "热", "睡", "菜", "说", "里", "高", "中", "京", "你", "写", "去", "和", "坐", "姐", "工", "打", "服", "椅", "爱", "租", "衣", "请", "钟", "么", "亮", "候", "冷", "友", "哪", "块", "子", "师", "日", "期", "欢", "爸", "站", "西", "读", "钱"];
-export const imageCountPerHanzi = 580; // TODO: Make this different for each hanzi, according to folder structure
-export const testImageCountPerHanzi = 135;
+export const ntrainImages = 580; // TODO: Make this different for each hanzi, according to folder structure
+export const ntestImages = 135;
 
 // Create array with number from 1 to N in random order utilizing only one array, the one returned, and no memory reallocation
 export function randomlyOrderNumbers1toN(arr: Uint16Array) {
@@ -24,25 +24,23 @@ export function randomlyOrderNumbers1toN(arr: Uint16Array) {
     }
 }
 
-export async function* trainImageIterator(w: number, h: number, nepochs: number): AsyncGenerator<np.Array> {
+export async function* trainImageIterator(w: number, h: number, batches: (np.Array | undefined)[], nhanzi: number = hanziList.length): AsyncGenerator<np.Array> {
     const npixels = w * h;
     const buffer = new Float32Array(hanziList.length * npixels);
-    const imageIDs = new Uint16Array(imageCountPerHanzi);
+    const imageIDs = new Uint16Array(ntrainImages);
     // OPFS
     const rootDir = await navigator.storage.getDirectory();
     const baseDir = await rootDir.getDirectoryHandle("hanzi");
     const trainDir = await baseDir.getDirectoryHandle("Train");
-    const imgFiles: FileSystemFileHandle[] = new Array(hanziList.length);
-    // Jax.js Arrays
-    const batches: (np.Array | undefined)[] = new Array(imageCountPerHanzi);
-    for (let iepoch = 0; iepoch < nepochs; iepoch++) {
+    const imgFiles: FileSystemFileHandle[] = new Array(nhanzi);
+    while (true) {
         randomlyOrderNumbers1toN(imageIDs);
         for (let imgID of imageIDs) {
             if (batches[imgID]) {
                 yield batches[imgID].ref;
                 continue;
             }
-            for (let ihanzi = 0; ihanzi < hanziList.length; ihanzi++) {
+            for (let ihanzi = 0; ihanzi < nhanzi; ihanzi++) {
                 const hanziDir = await trainDir.getDirectoryHandle(hanziList[ihanzi]);
                 imgFiles[ihanzi] = await hanziDir.getFileHandle(`${imgID}.png`);
             }
@@ -51,15 +49,13 @@ export async function* trainImageIterator(w: number, h: number, nepochs: number)
                     const file = await fileHandle.getFile();
                     const bytes = new Uint8Array(await file.arrayBuffer());
                     const png = new PNGParser(w, h, bytes);
-                    await png.decompressAndCopyPixels(buffer, i * npixels);
+                    await png.decompressAndDecodePixels(buffer, i * npixels);
                 })
             );
-            batches[imgID] = np.array(buffer, { shape: [hanziList.length, npixels] });
+            batches[imgID] = np.array(buffer, { shape: [nhanzi, npixels] });
             yield batches[imgID].ref;
         }
     }
-    console.log("Disposing training image memory!");
-    tree.dispose(batches);
 }
 export async function* testImageIterator(w: number, h: number): AsyncGenerator<np.Array> {
     const npixels = w * h;
@@ -69,7 +65,7 @@ export async function* testImageIterator(w: number, h: number): AsyncGenerator<n
     const baseDir = await rootDir.getDirectoryHandle("hanzi");
     const testDir = await baseDir.getDirectoryHandle("Test");
     const imgFiles: FileSystemFileHandle[] = new Array(hanziList.length);
-    for (let i = 0; i < testImageCountPerHanzi; i++) {
+    for (let i = 0; i < ntestImages; i++) {
         for (let ihanzi = 0; ihanzi < hanziList.length; ihanzi++) {
             const hanziDir = await testDir.getDirectoryHandle(hanziList[ihanzi]);
             imgFiles[ihanzi] = await hanziDir.getFileHandle(`${i + 1}.png`);
@@ -79,19 +75,9 @@ export async function* testImageIterator(w: number, h: number): AsyncGenerator<n
                 const file = await fileHandle.getFile();
                 const bytes = new Uint8Array(await file.arrayBuffer());
                 const png = new PNGParser(w, h, bytes);
-                await png.decompressAndCopyPixels(buffer, i * npixels);
+                await png.decompressAndDecodePixels(buffer, i * npixels);
             })
         );
         yield np.array(buffer, { shape: [hanziList.length, npixels] });
     }
-}
-
-// TODO: For greater indices we should have only the hanzi that contain images with said index in the labels
-export async function* hanziLabelIterator(nepochs: number): AsyncGenerator<np.Array> {
-    const labels = np.arange(hanziList.length);
-    const iters = nepochs*imageCountPerHanzi + testImageCountPerHanzi;
-    for (let i = 0; i < iters; i++)
-        yield labels.ref;
-    console.log("Disposing label memory!");
-    labels.dispose();
 }

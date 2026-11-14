@@ -68,20 +68,23 @@ button {
 }
 
 #app {
-  max-width: 100%;
+  width: 100%;
   min-height: 100svh;
   margin: 0 auto;
   text-align: center;
   display: flex;
-  box-sizing: border-box;
 }
 .main-column {
+  width: 100%;
   flex-direction: column;
-  flex-grow: 1;
+}
+.main-column h2 {
+  margin-top: 4rem;
+  margin-bottom: 4rem;
 }
 .row, .main-column {
+  flex-grow: 1;
   display: flex;
   gap: 25px;
-  place-content: center;
-  place-items: center;
+  justify-content: space-evenly;
 }

@@ -1,12 +1,12 @@
 <script>
-  import { hanziList, imageCountPerHanzi, testImageCountPerHanzi } from "../lib/HanziReader";
+  import { hanziList, ntrainImages, ntestImages } from "../lib/HanziReader";
   import { onMount } from "svelte";
   import { createOPFS } from "opfs-worker";
 
   /** @type {{ notifyImagesDownloaded: Function }} */
   const { notifyImagesDownloaded } = $props();
 
-  const totalImages = hanziList.length * (imageCountPerHanzi + testImageCountPerHanzi);
+  const totalImages = hanziList.length * (ntrainImages + ntestImages);
   let downloadedImagesCount = $state(0);
 
   const fs = createOPFS({
@@ -24,7 +24,7 @@
     }
     // Download & store training data
     for (let ihanzi = 0; ihanzi < hanziList.length; ihanzi++) {
-      for (let iimg = 0; iimg < imageCountPerHanzi; iimg++) {
+      for (let iimg = 0; iimg < ntrainImages; iimg++) {
         const imgFilePath = `/Train/${hanziList[ihanzi]}/${iimg + 1}.png`;
         if (await fs.exists(imgFilePath)) downloadedImagesCount++;
         else promises.push(downloadFile(imgFilePath));
@@ -36,7 +36,7 @@
     }
     // Download & store test data
     for (let ihanzi = 0; ihanzi < hanziList.length; ihanzi++) {
-      for (let iimg = 0; iimg < testImageCountPerHanzi; iimg++) {
+      for (let iimg = 0; iimg < ntestImages; iimg++) {
         const imgFilePath = `/Test/${hanziList[ihanzi]}/${iimg + 1}.png`;
         if (await fs.exists(imgFilePath)) downloadedImagesCount++;
         else promises.push(downloadFile(imgFilePath));
