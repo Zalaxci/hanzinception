@@ -1,12 +1,13 @@
-<script>
-  import ImageDownloadView from "./components/ImageDownloadView.svelte";
-  import NeuralNetworkTraining from "./components/NeuralNetworkTraining.svelte";
+<script lang="ts">
+  import { type HanziStorageModel } from "./models/HanziStorage";
+  import ImageDownloadView from "./views/ImageDownloadView.svelte";
+  import NNTrainingView from "./views/NNTrainingView.svelte";
 
-  let imagesAreDownloaded = $state(false);
+  let hanziStorage: HanziStorageModel | null = $state(null);
 </script>
 
-{#if imagesAreDownloaded}
-  <NeuralNetworkTraining/>
+{#if hanziStorage}
+  <NNTrainingView hanziStorage={hanziStorage}/>
 {:else}
-  <ImageDownloadView notifyImagesDownloaded={() => imagesAreDownloaded=true}/>
+  <ImageDownloadView notifyImagesDownloaded={storage => hanziStorage = storage}/>
 {/if}

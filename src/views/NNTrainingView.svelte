@@ -1,15 +1,21 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-
-  import { trainImageIterator, hanziList, testImageIterator, ntrainImages, ntestImages } from "../lib/HanziReader";
-  import { HanziRecognizerCNN, NeuralNetworkModel } from "../lib/NeuralNetwork";
-  import { defaultDevice, init as initJax, lax, nn, numpy as np, tree } from "@jax-js/jax";
+  import { defaultDevice, init as initJax, numpy as np } from "@jax-js/jax";
   import pThrottle from "p-throttle";
 
-  let model: NeuralNetworkModel | null = $state(null);
-  const results: string[] = $state([]);
-  // Training data: This is stored here so it can be cleared afterwards
-  const trainBatchData: (np.Array | undefined)[] = new Array(ntrainImages);
+  import { HanziRecognizerCNN } from "../models/HanziRecognizer";
+  import { getHanzi, getTotalHanziCount, type HanziStorageModel } from "../models/HanziStorage";
+  import { HanziRecognitionTrainer } from "../controllers/HanziRecognitionTrainer";
+
+  interface Props {
+    hanziStorage: HanziStorageModel
+  }
+  const { hanziStorage }: Props = $props();
+
+  let trainer: HanziRecognitionTrainer | null = null;
+  let trainingLosses: number[] = $state(Array(2).fill(0));
+  let testingLosses: number[] = $state(Array(2).fill(0));
+  let testingAccuracies: number[] = $state(Array(2).fill(0));
 
   onMount(async function init() {
     ctx = canvas.getContext("2d", { willReadFrequently: true })!;
@@ -23,43 +29,20 @@
     else defaultDevice("cpu");
 
     // Create model & initialize weights
-    model = new HanziRecognizerCNN();
-    await model.initRandom();
-    // Train
-    const trainImgIterator = trainImageIterator(50, 50, trainBatchData, hanziList.length);
-    const labels = np.arange(hanziList.length);
-    const trainingIterator = model.train(trainImgIterator, labels.ref, ntrainImages, 20, 0.0008);
-    for await (let metric of trainingIterator)
-      results.unshift(`*TRAINING* Epoch: ${metric.iepoch}, Batch: ${metric.ibatch}, Loss: ${metric.loss}`);
-    // Free memory used in training
-    for (let batch of trainBatchData)
-      batch?.dispose();
-    // Test
-    const testImgIterator = testImageIterator(50, 50);
-    let totalAccuracy = 0;
-    let totalLoss = 0;
-    for await (let testingBatch of testImgIterator) {
-      const modelOutput = model.predict(testingBatch);
-      const accuracy = await modelOutput.accuracy(labels.ref);
-      const loss = await modelOutput.loss(labels.ref).jsAsync();
-      results.unshift(`*TESTING* Accuracy: ${accuracy}, Loss: ${loss}`);
-      totalAccuracy += accuracy;
-      totalLoss += loss;
-      modelOutput.destructor();
-    }
-    results.unshift(`*TESTING AVERAGE* Accuracy: ${totalAccuracy/ntestImages}, Loss: ${totalLoss/ntestImages}`);
-    labels.dispose();
+    trainer = new HanziRecognitionTrainer(hanziStorage, [
+      new HanziRecognizerCNN(getTotalHanziCount()),
+    ], 100);
+    await trainer.initRandom();
+    await trainer.trainAll(20, 0.001, (i: number, loss: number) => trainingLosses[i] = loss);
+    await trainer.testAll((i: number, accuracy: number, loss: number) => {
+      testingAccuracies[i] = accuracy
+      testingLosses[i] = loss
+    })
   });
   onDestroy(() => {
     // Clear memory!
-    if (model !== null) {
-      model.destructor();
-      model = null;
-    }
-    // Free memory used in training
-    for (let arr of trainBatchData)
-      if (arr)
-        arr.dispose();
+    if (trainer !== null)
+      trainer.destructor();
     pixelConvolution.dispose();
   });
 
@@ -93,17 +76,17 @@
     ];
   }
   const inferCanvasHanzi = pThrottle({ limit: 0, interval: 30 })(async () => {
-    if (!model) return;
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    // First, construct a 2500-dimensional vector from the image data.
-    for (let i = 0; i < 250; i++)
-      for (let j = 0; j < 250; j++)
-        pixels[250*i + j] = imgData.data[(250*i + j)*4] / 255;
-    const pixelArray = np.array(pixels).reshape([1, 1, 250, 250]);
-    const shrankArray = lax.convGeneralDilated(pixelArray, pixelConvolution.ref, [5, 5], "VALID");
-    const results = model.predict(shrankArray);
-    predictedClass = (await results.mostLikelyOutputs().data())[0];
-    predictedProbability = (await results.realizeDataAndDestroy())[predictedClass];
+    // if (!model) return;
+    // const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // // First, construct a 2500-dimensional vector from the image data.
+    // for (let i = 0; i < 250; i++)
+    //   for (let j = 0; j < 250; j++)
+    //     pixels[250*i + j] = imgData.data[(250*i + j)*4] / 255;
+    // const pixelArray = np.array(pixels).reshape([1, 1, 250, 250]);
+    // const shrankArray = lax.convGeneralDilated(pixelArray, pixelConvolution.ref, [5, 5], "VALID");
+    // const results = model.predict(shrankArray);
+    // predictedClass = (await results.mostLikelyOutputs().data())[0];
+    // predictedProbability = (await results.realizeDataAndDestroy())[predictedClass];
   })
   function drawStart(event: PointerEvent) {
     event.preventDefault();
@@ -146,9 +129,35 @@
   <h2>Neural network trainer</h2>
   <div class="row">
     <div style="max-height: 60vh; display: flex; flex-direction: column; overflow-y: scroll;">
-      {#each results as resultStr}
-        <p>{resultStr}</p>
-      {/each}
+      <table>
+        <thead>
+          <tr>
+            <th>Metric</th>
+            <th>CNN w/ pooling</th>
+            <th>Pure CNN (less channels)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th>Training loss</th>
+            {#each trainingLosses as loss }
+              <td>{loss}</td>
+            {/each}
+          </tr>
+          <tr>
+            <th>Testing loss</th>
+            {#each testingLosses as loss }
+              <td>{loss}</td>
+            {/each}
+          </tr>
+          <tr>
+            <th>Testing accuracy</th>
+            {#each testingAccuracies as accuracy }
+              <td>{accuracy}</td>
+            {/each}
+          </tr>
+        </tbody>
+      </table>
     </div>
     <div style="display: flex; flex-direction: column; border-radius: 1rem;">
       <h3>Demo!</h3>
@@ -170,7 +179,7 @@
           <button onclick={handleClearClicked}>Clear</button>
       {/if}
       {#if predictedClass !== -1}
-        <p>Predicted hanzi: {hanziList[predictedClass]}</p>
+        <p>Predicted hanzi: {getHanzi(predictedClass)}</p>
         <p>Probability: {predictedProbability}</p>
       {/if}
     </div>

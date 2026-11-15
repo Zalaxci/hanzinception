@@ -1,9 +1,7 @@
-import { cachedFetch } from '@jax-js/loaders';
-
-export default class PNGParser {
+export class PNGModel {
   // Width & height
-  width: number
-  height: number
+  width: number = 0
+  height: number = 0
   // Originally a buffer containing all bytes of the image file, this is overwritten to contain only bytes which constitute compressed image data
   imgData: Uint8Array
   filePos: number // position in the entire image file
@@ -19,9 +17,7 @@ export default class PNGParser {
   dpos: number = 0 // position in decompressed data
 
   // Parse image
-  constructor(w: number, h: number, fileData: Uint8Array) {
-    this.width = w;
-    this.height = h;
+  constructor(fileData: Uint8Array) {
     // Originally, image data array starts out containing the entirity of the input file, or "file data"
     this.imgData = fileData;
     this.filePos = 8; // Skip the default header
@@ -38,7 +34,8 @@ export default class PNGParser {
         section += String.fromCharCode(fileData[this.filePos++]);
       switch (section) {
         case 'IHDR':
-          this.filePos += 8; // Ignore height & width (uint32, 2x4 = 8 bytes in size)
+          this.width = this.readUInt32();
+          this.height = this.readUInt32();
           this.nbytesPerPixel = fileData[this.filePos++] / 8;
           const colorType = fileData[this.filePos++];
           if (colorType === 2 || colorType === 6) this.ncolors = 3; // Is not monochrome => therefore number of colors is 3
@@ -67,9 +64,9 @@ export default class PNGParser {
     }
   }
   // Fetch image from url
-  static async fromURL(w: number, h: number, imgUrl: string | URL) {
+  static async fromURL(imgUrl: string | URL): Promise<PNGModel> {
     const resp = await fetch(imgUrl);
-    return new PNGParser(w, h, await resp.bytes());
+    return new PNGModel(await resp.bytes());
   }
 
   read(nbytes: number) {
