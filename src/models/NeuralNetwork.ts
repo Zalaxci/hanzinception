@@ -100,13 +100,13 @@ export class NeuralNetworkModel {
                 keysIterator.next().value,
                 this._weightShape[2*i],
                 { minval: -bound, maxval: bound }
-            )
+            ).astype(np.float16);
             // Shift amount is added after matrix multiplication is applied and has size of (i+1)th layer
             this._weights[2*i + 1] = random.uniform(
                 keysIterator.next().value,
                 this._weightShape[2*i + 1],
                 { minval: -bound, maxval: bound }
-            )
+            ).astype(np.float16);
         }
     }
     predict(input: np.Array): NNPredictionModel {
@@ -116,7 +116,7 @@ export class NeuralNetworkModel {
         )
     }
     async* train(inputs: AsyncGenerator<NNTrainInput>, nbatches: number, nepochs: number, learningRate: number): AsyncGenerator<NNTrainMetrics> {
-        const optimizer = adamw(learningRate, { mask: null, weightDecay: 0.01 });
+        const optimizer = adamw(learningRate, { mask: null, weightDecay: 0.005 });
         const evaluateValueAndGradientAtOnce = this._getAutodifPredictor();
         let updates: np.Array[] = [];
         let optState = optimizer.init(tree.ref(this._weights));
@@ -124,7 +124,7 @@ export class NeuralNetworkModel {
         // Use try; finally to ensure memory is cleared :)
         try {
             for (iepoch = 0; iepoch < nepochs; iepoch++) {
-                let curr_input = await inputs.next();
+                let curr_input = await inputs.next() as { value: NNTrainInput };
                 for (ibatch = 0; ibatch < nbatches; ibatch++) {
                     const [lossVal, derivativeOverWeights] = evaluateValueAndGradientAtOnce(tree.ref(this._weights), curr_input.value.data.ref, curr_input.value.labels.ref);
                     if ((ibatch + 1) % 10 === 0) {
@@ -137,20 +137,20 @@ export class NeuralNetworkModel {
                             return;
                         }
                         yield { iepoch, ibatch, loss: lossAsNumber };
-                        // If loss smaller than 0.05 return; memory will be cleared in the "finally" block
-                        if (lossAsNumber < 0.05) return;
+                        if (lossAsNumber <= 0.01) return;
                     } else lossVal.dispose();
                     // Dispose labels & data memory
                     curr_input.value.labels.dispose();
                     curr_input.value.data.dispose();
                     [updates, optState] = optimizer.update(derivativeOverWeights, optState, tree.ref(this._weights));
                     this._weights = applyUpdates(this._weights, updates);
-                    if ((ibatch + 1) % 5 === 0)
+                    if (ibatch % 9 === 0)
                         [ curr_input ] = await Promise.all([ inputs.next(), blockUntilReady(this._weights) ]);
                     else
                         curr_input = await inputs.next();
                 }
             }
+            await blockUntilReady(this._weights);
         } catch(e) {
             console.error(`Training error ${e} on batch ${ibatch}, epoch ${iepoch}`);
         } finally {

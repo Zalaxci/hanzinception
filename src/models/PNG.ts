@@ -93,7 +93,7 @@ export class PNGModel {
                     .pipeThrough(new DecompressionStream("deflate"));
     this.decompressedData = await new Response(stream).bytes();
   }
-  decodeSegment(pixels: Float32Array<ArrayBuffer>, offset: number, x0: number, y0: number, dx: number, dy: number, singlePass = false) {
+  decodeSegment(pixels: Float32Array<ArrayBuffer> | number[], offset: number, x0: number, y0: number, dx: number, dy: number, singlePass = false) {
     // Ensure decompressed data is non-null
     if (this.decompressedData === null)
       throw new Error("cannot read decompressed data as it is null - please read an image with 'decompress' before trying to call 'decodeSegment' method");
@@ -209,7 +209,7 @@ export class PNGModel {
       row++;
     }
   }
-  async decompressAndDecodePixels(outputArr: Float32Array<ArrayBuffer>, offset: number = 0) {
+  async decompressAndDecodePixels(outputArr: Float32Array<ArrayBuffer> | number[], offset: number = 0) {
     await this.decompress();
     if (this.interlaceMethod === 1) {
       /*

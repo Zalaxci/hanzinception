@@ -25,8 +25,8 @@ export class HanziRecognitionTrainer {
     #batchSize: number
     #nhanzi: number
     #imageSize: number
-    #trainPixelBuffer: Float32Array<ArrayBuffer>
-    #trainImageData: (np.Array | undefined)[]
+    #trainPixelBuffer: number[]
+    #trainImageData: (number[] | undefined)[]
     #storage: HanziStorageModel
     #neuralNets: NeuralNetworkModel[]
     constructor(storage: HanziStorageModel, neuralNets: NeuralNetworkModel[], batchSize: number) {
@@ -34,41 +34,43 @@ export class HanziRecognitionTrainer {
         this.#nhanzi = getTotalHanziCount();
         this.#imageSize = getImageSize();
         // Temporary container for pixel data, capable of fitting batchSize images to avoid race condition when loading many images asynchronously
-        this.#trainPixelBuffer = new Float32Array(this.#batchSize*this.#imageSize*this.#imageSize);
+        this.#trainPixelBuffer = new Array(this.#batchSize*this.#imageSize*this.#imageSize);
         // 2D array with rows equal to hanzi number & columns the images per hanzi
         this.#trainImageData = new Array(this.#nhanzi*N_TRAIN_IMAGES);
         this.#storage = storage;
         this.#neuralNets = neuralNets;
     }
     destructor() {
-        tree.dispose(this.#trainImageData);
         for (let nn of this.#neuralNets) nn.destructor();
     }
-    async #readTrainImageDataCached(index: number, bufferpos: number): Promise<np.Array> {
-        if (this.#trainImageData[index])
-            return this.#trainImageData[index].ref;
+    async #readTrainImageDataCached(iimg: number, bufferpos: number): Promise<void> {
         const npixels = this.#imageSize*this.#imageSize;
-        const ihanzi = index % this.#nhanzi;
-        const iimg = (index - ihanzi)/this.#nhanzi;
-        const png = await this.#storage.readFile(getHanzi(ihanzi), iimg + 1, false);
-        await png.decompressAndDecodePixels(this.#trainPixelBuffer, bufferpos*npixels);
-        this.#trainImageData[index] = np.array(this.#trainPixelBuffer.slice(bufferpos*npixels, (bufferpos + 1)*npixels));
-        return this.#trainImageData[index].ref;
+        if (!this.#trainImageData[iimg]) {
+            console.log(`Image ${iimg} not in memory, loading from OPFS...`);
+            const ihanzi = iimg % this.#nhanzi;
+            const imgFileNum = (iimg - ihanzi)/this.#nhanzi + 1;
+            const png = await this.#storage.readFile(getHanzi(ihanzi), imgFileNum, false);
+            this.#trainImageData[iimg] = new Array(npixels);
+            await png.decompressAndDecodePixels(this.#trainImageData[iimg]);
+        }
+        for (let ipixel = 0; ipixel < npixels; ipixel++)
+            this.#trainPixelBuffer[bufferpos*npixels + ipixel] = this.#trainImageData[iimg][ipixel];
     }
     async *#createBatchGenerator(nepochs: number): AsyncGenerator<NNTrainInput> {
         const nbatches = Math.ceil(N_TRAIN_IMAGES * this.#nhanzi / this.#batchSize);
-        const epochIndices: number[] = new Array(this.#trainImageData.length);
+        const npixels = this.#imageSize*this.#imageSize;
+        const epochIndices: number[] = new Array(N_TRAIN_IMAGES * this.#nhanzi);
         for (let iepoch = 0; iepoch < nepochs; iepoch++) {
             randomlyOrderNumbersUpToN(epochIndices);
             for (let ibatch = 0; ibatch < nbatches; ibatch++) {
                 const batchIndices = epochIndices.slice(ibatch*this.#batchSize, (ibatch + 1)*this.#batchSize);
-                const batchImageArrays = await Promise.all(
+                await Promise.all(
                     batchIndices.map(this.#readTrainImageDataCached.bind(this))
                 );
                 const batchLabels = batchIndices.map(i => i % this.#nhanzi);
                 yield {
                     labels: np.array(batchLabels, { dtype: np.uint32 }),
-                    data: np.stack(batchImageArrays, 0),
+                    data: np.array(this.#trainPixelBuffer.slice(0, batchIndices.length*npixels), { dtype: np.float16, shape: [batchIndices.length, npixels]}),
                 };
             }
         }
@@ -86,28 +88,26 @@ export class HanziRecognitionTrainer {
     }
     async testAll(updateTestLoss: (imodel: number, accuracy: number, loss: number) => void) {
         const npixels = this.#imageSize*this.#imageSize;
-        const testImageData: np.Array[] = new Array(this.#nhanzi);
-        const testPixelBuffer = new Float32Array(N_TEST_IMAGES*npixels);
+        const testPixelBuffer = new Array(N_TEST_IMAGES*npixels) as number[];
+        const losses = new Float32Array(this.#neuralNets.length);
+        const accuracies = new Float32Array(this.#neuralNets.length);
         for (let ihanzi = 0; ihanzi < this.#nhanzi; ihanzi++) {
             for (let iimg = 0; iimg < N_TEST_IMAGES; iimg++) {
                 const png = await this.#storage.readFile(getHanzi(ihanzi), iimg + 1, true);
                 await png.decompressAndDecodePixels(testPixelBuffer, iimg*npixels);
             }
-            testImageData[ihanzi] = np.array(testPixelBuffer, { shape: [N_TEST_IMAGES, npixels]});
-        }
-        for (let [i, nn] of this.#neuralNets.entries()) {
-            let avgLoss = 0;
-            let avgAccuracy = 0;
-            for (let [ibatch, batch] of testImageData.entries()) {
-                const labels = np.full([N_TEST_IMAGES], ibatch);
+            for (let [imodel, nn] of this.#neuralNets.entries()) {
+                const batch =  np.array(testPixelBuffer, { dtype: np.float16, shape: [N_TEST_IMAGES, npixels]});
+                const labels = np.full([N_TEST_IMAGES], ihanzi, { dtype: np.uint32 });
                 const prediction = nn.predict(batch);
-                const loss = await prediction.loss(labels).jsAsync();
+                const loss = await prediction.loss(labels.ref).jsAsync();
                 const accuracy = await prediction.accuracy(labels);
                 prediction.destructor();
-                avgLoss = (avgLoss*ibatch + loss)/(ibatch + 1);
-                avgAccuracy = (avgAccuracy*ibatch + accuracy)/(ibatch + 1);
-                updateTestLoss(i, avgAccuracy, avgLoss);
+                losses[imodel] = (losses[imodel]*ihanzi + loss)/(ihanzi + 1);
+                accuracies[imodel] = (accuracies[imodel]*ihanzi + accuracy)/(ihanzi + 1);
+                updateTestLoss(imodel, losses[imodel], accuracies[imodel]);
             }
         }
+        
     }
 }

@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { defaultDevice, init as initJax, numpy as np } from "@jax-js/jax";
+  import { defaultDevice, init as initJax, lax, numpy as np } from "@jax-js/jax";
   import pThrottle from "p-throttle";
 
-  import { HanziRecognizerCNN } from "../models/HanziRecognizer";
+  import { HanziRecognizerInception } from "../models/HanziRecognizer";
   import { getHanzi, getTotalHanziCount, type HanziStorageModel } from "../models/HanziStorage";
   import { HanziRecognitionTrainer } from "../controllers/HanziRecognitionTrainer";
 
@@ -12,6 +12,7 @@
   }
   const { hanziStorage }: Props = $props();
 
+  let inception: HanziRecognizerInception | null = null;
   let trainer: HanziRecognitionTrainer | null = null;
   let trainingLosses: number[] = $state(Array(2).fill(0));
   let testingLosses: number[] = $state(Array(2).fill(0));
@@ -28,12 +29,12 @@
     else if (devices.includes("wasm")) defaultDevice("wasm");
     else defaultDevice("cpu");
 
-    // Create model & initialize weights
+    inception = new HanziRecognizerInception(getTotalHanziCount())
     trainer = new HanziRecognitionTrainer(hanziStorage, [
-      new HanziRecognizerCNN(getTotalHanziCount()),
-    ], 100);
+      inception,
+    ], 80);
     await trainer.initRandom();
-    await trainer.trainAll(20, 0.001, (i: number, loss: number) => trainingLosses[i] = loss);
+    await trainer.trainAll(8, 0.001, (i: number, loss: number) => trainingLosses[i] = loss);
     await trainer.testAll((i: number, accuracy: number, loss: number) => {
       testingAccuracies[i] = accuracy
       testingLosses[i] = loss
@@ -58,11 +59,11 @@
 
   const pixels = new Float32Array(62500);
   const pixelConvolution = np.array([
-    [0.5, 0.5, 0.5, 0.5, 0.5],
-    [0.5, 0.8, 0.8, 0.8, 0.5],
-    [0.5, 0.8, 1.0, 0.8, 0.5],
-    [0.5, 0.8, 0.8, 0.8, 0.5],
-    [0.5, 0.5, 0.5, 0.5, 0.5],
+    [0.7, 0.7, 0.7, 0.7, 0.7],
+    [0.7, 0.9, 0.9, 0.9, 0.7],
+    [0.7, 0.9, 1.0, 0.9, 0.7],
+    [0.7, 0.9, 0.9, 0.9, 0.7],
+    [0.7, 0.7, 0.7, 0.7, 0.7],
   ]).mul(1/25).reshape([1, 1, 5, 5]);
 
   let predictedClass: number = $state(-1);
@@ -76,17 +77,17 @@
     ];
   }
   const inferCanvasHanzi = pThrottle({ limit: 0, interval: 30 })(async () => {
-    // if (!model) return;
-    // const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    // // First, construct a 2500-dimensional vector from the image data.
-    // for (let i = 0; i < 250; i++)
-    //   for (let j = 0; j < 250; j++)
-    //     pixels[250*i + j] = imgData.data[(250*i + j)*4] / 255;
-    // const pixelArray = np.array(pixels).reshape([1, 1, 250, 250]);
-    // const shrankArray = lax.convGeneralDilated(pixelArray, pixelConvolution.ref, [5, 5], "VALID");
-    // const results = model.predict(shrankArray);
-    // predictedClass = (await results.mostLikelyOutputs().data())[0];
-    // predictedProbability = (await results.realizeDataAndDestroy())[predictedClass];
+    if (!inception) return;
+    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    // First, construct a 2500-dimensional vector from the image data.
+    for (let i = 0; i < 250; i++)
+      for (let j = 0; j < 250; j++)
+        pixels[250*i + j] = imgData.data[(250*i + j)*4] / 255;
+    const pixelArray = np.array(pixels).reshape([1, 1, 250, 250]);
+    const shrankArray = lax.convGeneralDilated(pixelArray, pixelConvolution.ref, [5, 5], "VALID");
+    const results = inception.predict(shrankArray);
+    predictedClass = (await results.mostLikelyOutputs().data())[0];
+    predictedProbability = (await results.realizeDataAndDestroy())[predictedClass];
   })
   function drawStart(event: PointerEvent) {
     event.preventDefault();
@@ -128,7 +129,7 @@
 <section class="main-column">
   <h2>Neural network trainer</h2>
   <div class="row">
-    <div style="max-height: 60vh; display: flex; flex-direction: column; overflow-y: scroll;">
+    <div style="max-height: 60vh; display: flex; flex-direction: column;">
       <table>
         <thead>
           <tr>
