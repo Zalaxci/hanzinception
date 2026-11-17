@@ -1,6 +1,6 @@
-import { numpy as np, tree } from "@jax-js/jax";
-import { getHanzi, getImageSize, getTotalHanziCount, getTotalImageCount, N_TEST_IMAGES, N_TRAIN_IMAGES, type HanziStorageModel } from "../models/HanziStorage";
-import type { NeuralNetworkModel, NNTrainInput } from "../models/NeuralNetwork";
+import { numpy as np } from "@jax-js/jax";
+import { getHanzi, getImageSize, getTotalHanziCount, N_TEST_IMAGES, N_TRAIN_IMAGES, type HanziStorageModel } from "../models/HanziStorage";
+import type { NeuralNetworkModel, NNTrainInput, NNTrainMetrics } from "../models/NeuralNetwork";
 
 // Create array with number from 0 to N - 1 in random order utilizing only one array, the one returned, and no memory reallocation
 function randomlyOrderNumbersUpToN(arr: number[]) {
@@ -79,18 +79,18 @@ export class HanziRecognitionTrainer {
         for (let nn of this.#neuralNets)
             await nn.initRandom();
     }
-    async trainAll(nepochs: number, learningRate: number, updateTrainLoss: (imodel: number, loss: number) => void) {
+    async *trainAll(nepochs: number, learningRate: number, cutoffLoss: number = 0): AsyncGenerator<{imodel: number, metrics: NNTrainMetrics}> {
         const nbatches = Math.ceil(N_TRAIN_IMAGES * this.#nhanzi / this.#batchSize);
         const batchGenerator = this.#createBatchGenerator(this.#neuralNets.length*nepochs);
-        for (let [i, nn] of this.#neuralNets.entries())
-            for await (let metric of nn.train(batchGenerator, nbatches, nepochs, learningRate))
-                updateTrainLoss(i, metric.loss);
+        for (let [imodel, nn] of this.#neuralNets.entries())
+            for await (let metrics of nn.train(batchGenerator, nbatches, nepochs, learningRate, cutoffLoss))
+                yield { imodel, metrics };
     }
     async testAll(updateTestLoss: (imodel: number, accuracy: number, loss: number) => void) {
         const npixels = this.#imageSize*this.#imageSize;
         const testPixelBuffer = new Array(N_TEST_IMAGES*npixels) as number[];
-        const losses = new Float32Array(this.#neuralNets.length);
         const accuracies = new Float32Array(this.#neuralNets.length);
+        const losses = new Float32Array(this.#neuralNets.length);
         for (let ihanzi = 0; ihanzi < this.#nhanzi; ihanzi++) {
             for (let iimg = 0; iimg < N_TEST_IMAGES; iimg++) {
                 const png = await this.#storage.readFile(getHanzi(ihanzi), iimg + 1, true);
@@ -103,9 +103,9 @@ export class HanziRecognitionTrainer {
                 const loss = await prediction.loss(labels.ref).jsAsync();
                 const accuracy = await prediction.accuracy(labels);
                 prediction.destructor();
-                losses[imodel] = (losses[imodel]*ihanzi + loss)/(ihanzi + 1);
                 accuracies[imodel] = (accuracies[imodel]*ihanzi + accuracy)/(ihanzi + 1);
-                updateTestLoss(imodel, losses[imodel], accuracies[imodel]);
+                losses[imodel] = (losses[imodel]*ihanzi + loss)/(ihanzi + 1);
+                updateTestLoss(imodel, accuracies[imodel], losses[imodel]);
             }
         }
         
