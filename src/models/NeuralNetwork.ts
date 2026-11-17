@@ -1,6 +1,8 @@
 import { blockUntilReady, jit, lax, nn, numpy as np, random, tree, valueAndGrad, type OwnedFunction } from "@jax-js/jax"
 import { adamw, applyUpdates } from "@jax-js/optax"
 
+export type RecursiveArray<T> = T | RecursiveArray<T>[]
+
 type PredictorFunction = (w: np.Array[], x: np.Array) => np.Array
 type PredictAndAutodiffFunc = (w: np.Array[], x: np.Array, y: np.Array) => [np.Array, np.Array[]]
 
@@ -88,6 +90,14 @@ export class NeuralNetworkModel {
             return loss;
         });
     }
+    async getWeights(): Promise<RecursiveArray<number>> {
+        return await Promise.all(this._weights.map(w => w.ref.jsAsync() as Promise<RecursiveArray<number>>));
+    }
+    async loadWeights() {
+        const response = await fetch("weights.json");
+        const weights = await response.json() as RecursiveArray<number>[];
+        this._weights = weights.map(w => np.array(w));
+    }
     // Init random values - this only works for MLPs, not convolutional neural networks
     async initRandom() {
         const nlayers = this._weightShape.length / 2;
@@ -115,7 +125,7 @@ export class NeuralNetworkModel {
             this._jitPredictor(tree.ref(this._weights), input)
         )
     }
-    async* train(inputs: AsyncGenerator<NNTrainInput>, nbatches: number, nepochs: number, learningRate: number): AsyncGenerator<NNTrainMetrics> {
+    async* train(inputs: AsyncGenerator<NNTrainInput>, nbatches: number, nepochs: number, learningRate: number, cutoffLoss: number = 0): AsyncGenerator<NNTrainMetrics> {
         const optimizer = adamw(learningRate, { mask: null, weightDecay: 0.005 });
         const evaluateValueAndGradientAtOnce = this._getAutodifPredictor();
         let updates: np.Array[] = [];
@@ -136,21 +146,20 @@ export class NeuralNetworkModel {
                             console.log("Actual class is: ", await curr_input.value.labels.jsAsync());
                             return;
                         }
-                        yield { iepoch, ibatch, loss: lossAsNumber };
-                        if (lossAsNumber <= 0.01) return;
+                        yield { iepoch: iepoch + 1, ibatch: ibatch + 1, loss: lossAsNumber };
+                        if (cutoffLoss > 0 && lossAsNumber <= cutoffLoss) return;
                     } else lossVal.dispose();
                     // Dispose labels & data memory
                     curr_input.value.labels.dispose();
                     curr_input.value.data.dispose();
                     [updates, optState] = optimizer.update(derivativeOverWeights, optState, tree.ref(this._weights));
                     this._weights = applyUpdates(this._weights, updates);
-                    if (ibatch % 9 === 0)
+                    if (ibatch % 8 === 0)
                         [ curr_input ] = await Promise.all([ inputs.next(), blockUntilReady(this._weights) ]);
                     else
                         curr_input = await inputs.next();
                 }
             }
-            await blockUntilReady(this._weights);
         } catch(e) {
             console.error(`Training error ${e} on batch ${ibatch}, epoch ${iepoch}`);
         } finally {
