@@ -1,0 +1,17 @@
+{
+  "name": "hanzinception",
+  "compatibility_date": "2026-11-01",
+	"pages_build_output_dir": "./public",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page",
+    "html_handling": "drop-trailing-slash",
+    "run_worker_first": ["/api/*"]
+  },
+	"r2_buckets": [
+		{
+			"binding": "MEDIA",
+			"bucket_name": "casia-hsk1-hanzi"
+		}
+	]
+}
