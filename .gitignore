@@ -25,6 +25,3 @@ dist-ssr
 
 # Vitest reports and artifacts
 .vitest/
-
-# Assets
-public/chinese-handwriting
