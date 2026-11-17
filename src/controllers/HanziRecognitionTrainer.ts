@@ -29,7 +29,7 @@ export class HanziRecognitionTrainer {
     #trainImageData: (number[] | undefined)[]
     #storage: HanziStorageModel
     #neuralNets: NeuralNetworkModel[]
-    constructor(storage: HanziStorageModel, neuralNets: NeuralNetworkModel[], batchSize: number) {
+    constructor(storage: HanziStorageModel, batchSize: number) {
         this.#batchSize = batchSize;
         this.#nhanzi = getTotalHanziCount();
         this.#imageSize = getImageSize();
@@ -38,7 +38,7 @@ export class HanziRecognitionTrainer {
         // 2D array with rows equal to hanzi number & columns the images per hanzi
         this.#trainImageData = new Array(this.#nhanzi*N_TRAIN_IMAGES);
         this.#storage = storage;
-        this.#neuralNets = neuralNets;
+        this.#neuralNets = [];
     }
     destructor() {
         for (let nn of this.#neuralNets) nn.destructor();
@@ -74,6 +74,10 @@ export class HanziRecognitionTrainer {
                 };
             }
         }
+    }
+    addNN(nn: NeuralNetworkModel) {
+        if (!this.#neuralNets.includes(nn))
+            this.#neuralNets.push(nn);
     }
     async initRandom() {
         for (let nn of this.#neuralNets)
