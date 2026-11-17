@@ -160,6 +160,7 @@ export class NeuralNetworkModel {
                         curr_input = await inputs.next();
                 }
             }
+            await blockUntilReady(this._weights);
         } catch(e) {
             console.error(`Training error ${e} on batch ${ibatch}, epoch ${iepoch}`);
         } finally {
