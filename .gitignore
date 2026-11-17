@@ -27,5 +27,4 @@ dist-ssr
 .vitest/
 
 # Assets
-assets
-public/assets
+public/chinese-handwriting
