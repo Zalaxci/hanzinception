@@ -46,6 +46,7 @@ export async function createHanziStorageModel(): Promise<HanziStorageModel> {
         const imgHandle = await currHanziDir.getFileHandle(`${imageNumber}.png`, { create: true });
         const imgWriter = await imgHandle.createWritable();
         await imgWriter.write(imgData);
+        await imgWriter.close();
     }
     return {
         async readFile(hanzi: string, imageNumber: number, isTestData: boolean = false): Promise<PNGModel> {
@@ -91,6 +92,7 @@ export async function createHanziStorageModel(): Promise<HanziStorageModel> {
                 }
             }
             await Promise.all(promises);
+            await hanziDir.getFileHandle("ALL_DOWNLOADED", { create: true });
         },
     }
 }
