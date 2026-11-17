@@ -1,188 +1,148 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import { defaultDevice, init as initJax, lax, numpy as np } from "@jax-js/jax";
-  import pThrottle from "p-throttle";
+  import { defaultDevice, init as initJax } from "@jax-js/jax";
 
+  import type { NNTrainMetrics } from "../models/NeuralNetwork";
   import { HanziRecognizerInception } from "../models/HanziRecognizer";
-  import { getHanzi, getTotalHanziCount, type HanziStorageModel } from "../models/HanziStorage";
+  import { getTotalHanziCount, type HanziStorageModel } from "../models/HanziStorage";
   import { HanziRecognitionTrainer } from "../controllers/HanziRecognitionTrainer";
+  import HanziDrawingView from "./HanziDrawingView.svelte";
 
   interface Props {
     hanziStorage: HanziStorageModel
   }
   const { hanziStorage }: Props = $props();
 
-  let inception: HanziRecognizerInception | null = null;
-  let trainer: HanziRecognitionTrainer | null = null;
-  let trainingLosses: number[] = $state(Array(2).fill(0));
-  let testingLosses: number[] = $state(Array(2).fill(0));
-  let testingAccuracies: number[] = $state(Array(2).fill(0));
+  let stage: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 = $state(0);
+  let stageMsg = $derived(getStateMsg(stage));
+  let inception: HanziRecognizerInception | null = $state(null);
+  let trainer: HanziRecognitionTrainer | null = $state(null);
+  let trainingMetrics: NNTrainMetrics | null = $state(null);
+  let testingLoss = $state(0);
+  let testingAccuracy = $state(0);
 
   onMount(async function init() {
-    ctx = canvas.getContext("2d", { willReadFrequently: true })!;
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     const devices = await initJax();
     if (devices.includes("webgpu")) defaultDevice("webgpu");
     else if (devices.includes("webgl")) defaultDevice("webgl");
     else if (devices.includes("wasm")) defaultDevice("wasm");
     else defaultDevice("cpu");
+    stage = 1; // Succesfully initialized Jax & set Jax backend
 
     inception = new HanziRecognizerInception(getTotalHanziCount())
     trainer = new HanziRecognitionTrainer(hanziStorage, [
       inception,
     ], 80);
-    await trainer.initRandom();
-    await trainer.trainAll(8, 0.001, (i: number, loss: number) => trainingLosses[i] = loss);
-    await trainer.testAll((i: number, accuracy: number, loss: number) => {
-      testingAccuracies[i] = accuracy
-      testingLosses[i] = loss
-    })
+    stage = 2; // Succesfully created inception model
   });
-  onDestroy(() => {
+  onDestroy(async () => {
     // Clear memory!
     if (trainer !== null)
       trainer.destructor();
-    pixelConvolution.dispose();
   });
 
-  // Drawing functionality (TODO: seperate component)
-  const lineWidth = 8;
-
-  let hasDrawn = $state(false);
-  let isDrawing = $state(false);
-  let lastPos = [0, 0];
-
-  let canvas: HTMLCanvasElement;
-  let ctx: CanvasRenderingContext2D;
-
-  const pixels = new Float32Array(62500);
-  const pixelConvolution = np.array([
-    [0.7, 0.7, 0.7, 0.7, 0.7],
-    [0.7, 0.9, 0.9, 0.9, 0.7],
-    [0.7, 0.9, 1.0, 0.9, 0.7],
-    [0.7, 0.9, 0.9, 0.9, 0.7],
-    [0.7, 0.7, 0.7, 0.7, 0.7],
-  ]).mul(1/25).reshape([1, 1, 5, 5]);
-
-  let predictedClass: number = $state(-1);
-  let predictedProbability: number = $state(0);
-
-  function getCanvasCoords(event: PointerEvent): [number, number] {
-    const rect = canvas.getBoundingClientRect();
-    return [
-      (event.offsetX / rect.width) * canvas.width,
-      (event.offsetY / rect.height) * canvas.height,
-    ];
+  function getStateMsg(s: number) {
+    switch (s) {
+      case 0:
+        return "Initializing Jax...";
+      case 1:
+        return "Creating model...";
+      case 2:
+        return "Model created!";
+      case 3:
+        return "Randomizing weights...";
+      case 4:
+        return "Training...";
+      case 5:
+        return "Model trained!"
+      case 6:
+        return "Loading test data...";
+      case 7:
+        return "Testing...";
+      case 8:
+        return "Finished testing!";
+      default:
+        return "";
+    }
   }
-  const inferCanvasHanzi = pThrottle({ limit: 0, interval: 30 })(async () => {
-    if (!inception) return;
-    const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    // First, construct a 2500-dimensional vector from the image data.
-    for (let i = 0; i < 250; i++)
-      for (let j = 0; j < 250; j++)
-        pixels[250*i + j] = imgData.data[(250*i + j)*4] / 255;
-    const pixelArray = np.array(pixels).reshape([1, 1, 250, 250]);
-    const shrankArray = lax.convGeneralDilated(pixelArray, pixelConvolution.ref, [5, 5], "VALID");
-    const results = inception.predict(shrankArray);
-    predictedClass = (await results.mostLikelyOutputs().data())[0];
-    predictedProbability = (await results.realizeDataAndDestroy())[predictedClass];
-  })
-  function drawStart(event: PointerEvent) {
-    event.preventDefault();
-    const [x, y] = getCanvasCoords(event);
-    isDrawing = true;
-    ctx.fillStyle = "black";
-    ctx.beginPath();
-    ctx.ellipse(x, y, lineWidth / 2, lineWidth / 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    lastPos = [x, y];
-    hasDrawn = true;
-    inferCanvasHanzi();
+  async function loadStored() {
+    if (!trainer || !inception) return;
+    await inception.loadWeights();
+    stage = 5 // Model trained!
   }
-  function drawMove(event: PointerEvent) {
-    if (!isDrawing) return;
-    event.preventDefault();
-    const [x, y] = getCanvasCoords(event);
-    ctx.beginPath();
-    ctx.moveTo(lastPos[0], lastPos[1]);
-    ctx.lineTo(x, y);
-    ctx.lineWidth = lineWidth;
-    ctx.lineCap = "round";
-    ctx.stroke();
-    lastPos = [x, y];
-    inferCanvasHanzi();
+  async function trainModel() {
+    if (!trainer || !inception) return;
+    stage = 3; // Randomizing weights...
+    await trainer.initRandom();
+    stage = 4; // Weights initialized, training...
+    for await (let m of trainer.trainAll(5, 0.001, 0.02))
+      trainingMetrics = m.metrics;
+    stage = 5; // Model trained!
   }
-  function drawEnd() {
-    isDrawing = false;
-  }
-  function handleClearClicked(event: MouseEvent) {
-    event.stopPropagation();
-    ctx.fillStyle = "white";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    hasDrawn = false;
-    predictedClass = -1;
+  async function testModel() {
+    if (!trainer || !inception) return;
+    stage = 6; // Loading test data...
+    await trainer.testAll((i: number, accuracy: number, loss: number) => {
+      if (stage === 5) stage = 6; //Testing!
+      testingAccuracy = accuracy;
+      testingLoss = loss;
+    });
+    // Finished!
+    stage = 7;
   }
 </script>
 
-<section class="main-column">
-  <h2>Neural network trainer</h2>
-  <div class="row">
-    <div style="max-height: 60vh; display: flex; flex-direction: column;">
+<h2>{stageMsg}</h2>
+{#if stage == 2}
+  <div>
+    <button onclick={loadStored}>Load stored weights!</button>
+    <button onclick={trainModel}>Train model!</button>
+  </div>
+{:else if stage == 5}
+  <div>
+    <button onclick={testModel}>Test model!</button>
+  </div>
+{/if}
+{#if inception && stage >= 4}
+  <HanziDrawingView model={inception}/>
+{/if}
+<div class="row">
+  {#if trainingMetrics}
+    <div id="training-metrics" class="section">
+      <h3>Training metrics:</h3>
       <table>
-        <thead>
-          <tr>
-            <th>Metric</th>
-            <th>CNN w/ pooling</th>
-            <th>Pure CNN (less channels)</th>
-          </tr>
-        </thead>
         <tbody>
           <tr>
-            <th>Training loss</th>
-            {#each trainingLosses as loss }
-              <td>{loss}</td>
-            {/each}
+            <th>Loss</th>
+            <td>{trainingMetrics.loss}</td>
           </tr>
           <tr>
-            <th>Testing loss</th>
-            {#each testingLosses as loss }
-              <td>{loss}</td>
-            {/each}
+            <th>Epoch</th>
+            <td>{trainingMetrics.iepoch}</td>
           </tr>
           <tr>
-            <th>Testing accuracy</th>
-            {#each testingAccuracies as accuracy }
-              <td>{accuracy}</td>
-            {/each}
+            <th>Batch</th>
+            <td>{trainingMetrics.ibatch}</td>
           </tr>
         </tbody>
       </table>
     </div>
-    <div style="display: flex; flex-direction: column; border-radius: 1rem;">
-      <h3>Demo!</h3>
-      <div style="position: relative; border: solid .4rem indigo; border-radius: .5rem;">
-        <canvas
-          width="250"
-          height="250"
-          onpointerdown={drawStart}
-          onpointermove={drawMove}
-          onpointerleave={drawEnd}
-          onpointerup={drawEnd}
-          bind:this={canvas}
-        ></canvas>
-        {#if !hasDrawn}
-          <p style="position: absolute; top: 60px; left: 30px; color: navy; font-size: x-large; font-style: italic; transform: rotate(30deg);">Draw a hanzi here!</p>
-        {/if}
-      </div>
-      {#if hasDrawn}
-          <button onclick={handleClearClicked}>Clear</button>
-      {/if}
-      {#if predictedClass !== -1}
-        <p>Predicted hanzi: {getHanzi(predictedClass)}</p>
-        <p>Probability: {predictedProbability}</p>
-      {/if}
+  {/if}
+  {#if stage >= 6}
+    <div id="training-metrics" class="section">
+      <h3>Testing metrics:</h3>
+      <table>
+        <tbody>
+          <tr>
+            <th>Loss</th>
+            <td>{testingLoss}</td>
+          </tr>
+          <tr>
+            <th>Accuracy</th>
+            <td>{testingAccuracy}</td>
+          </tr>
+        </tbody>
+      </table>
     </div>
-  </div>
-</section>
+  {/if}
+</div>

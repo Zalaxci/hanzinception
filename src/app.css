@@ -67,24 +67,35 @@ button {
   }
 }
 
+#app, .row, .main-column {
+  display: flex;
+}
 #app {
   width: 100%;
   min-height: 100svh;
   margin: 0 auto;
   text-align: center;
-  display: flex;
 }
 .main-column {
+  margin-top: 2rem;
   width: 100%;
+  flex-grow: 1;
   flex-direction: column;
 }
-.main-column h2 {
-  margin-top: 4rem;
-  margin-bottom: 4rem;
+.main-column > * {
+  margin-left: auto;
+  margin-right: auto;
 }
-.row, .main-column {
-  flex-grow: 1;
-  display: flex;
-  gap: 25px;
-  justify-content: space-evenly;
+.row {
+  place-content: center;
+  place-items: center;
+  flex-wrap: wrap;
+}
+.section {
+  margin: 2rem;
+}
+
+#hanzi-canvas {
+  border: solid .4rem rgb(46, 24, 93);
+  border-radius: .5rem;
 }

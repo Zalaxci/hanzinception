@@ -23,10 +23,8 @@
   });
 </script>
 
-<section class="main-column">
-    <h2>Loading...</h2>
-    {#each errors as err}
-      <p style="margin: 0.5rem; background-color: yellow; border-radius: 0.5rem; color: lightgrey">{err}</p>
-    {/each}
-    <h3>{ndownloadedImages} out of {ntotalImages} downloaded</h3>
-</section>
+<h2>Downloading images...</h2>
+{#each errors as err}
+  <p style="margin: 0.5rem; background-color: yellow; border-radius: 0.5rem; color: lightgrey">{err}</p>
+{/each}
+<h3>{ndownloadedImages} out of {ntotalImages} downloaded</h3>

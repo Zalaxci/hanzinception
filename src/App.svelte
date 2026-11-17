@@ -6,8 +6,10 @@
   let hanziStorage: HanziStorageModel | null = $state(null);
 </script>
 
-{#if hanziStorage}
-  <NNTrainingView hanziStorage={hanziStorage}/>
-{:else}
-  <ImageDownloadView notifyImagesDownloaded={storage => hanziStorage = storage}/>
-{/if}
+<section class="main-column">
+  {#if hanziStorage}
+    <NNTrainingView hanziStorage={hanziStorage}/>
+  {:else}
+    <ImageDownloadView notifyImagesDownloaded={storage => hanziStorage = storage}/>
+  {/if}
+</section>
