@@ -4,11 +4,15 @@
 	"pages_build_output_dir": "./dist",
   "assets": {
     "directory": "./dist",
-    "not_found_handling": "404-page",
     "html_handling": "drop-trailing-slash"
   },
   "build": {
     "command": "bun run build"
+  },
+  "site": {
+    "exclude": [
+      "public/chinese-handwriting"
+    ]
   },
 	"r2_buckets": [
 		{
