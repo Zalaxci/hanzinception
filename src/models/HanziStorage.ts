@@ -24,9 +24,9 @@ export interface HanziStorageModel {
 }
 export async function createHanziStorageModel(): Promise<HanziStorageModel> {
     const rootDir = await navigator.storage.getDirectory();
-    const hanziDir = await rootDir.getDirectoryHandle("hanzi");
-    const trainDir = await hanziDir.getDirectoryHandle("Train");
-    const testDir = await hanziDir.getDirectoryHandle("Test");
+    const hanziDir = await rootDir.getDirectoryHandle("hanzi", { create: true });
+    const trainDir = await hanziDir.getDirectoryHandle("Train", { create: true });
+    const testDir = await hanziDir.getDirectoryHandle("Test", { create: true });
     // Test if file with filename exists in specific directory
     async function exists(directory: FileSystemDirectoryHandle, filename: string, handleError: (err: any) => void): Promise<boolean> {
         try {
@@ -43,7 +43,7 @@ export async function createHanziStorageModel(): Promise<HanziStorageModel> {
     async function downloadFile(currHanziDir: FileSystemDirectoryHandle, hanzi: string, imageNumber: number, isTestData: boolean = false) {
         const resp = await fetch(`${DOWNLOAD_BASE_PATH}/${isTestData? "Test" : "Train"}/${hanzi}/${imageNumber}.png`);
         const imgData = await resp.bytes();
-        const imgHandle = await currHanziDir.getFileHandle(`${imageNumber}.png`);
+        const imgHandle = await currHanziDir.getFileHandle(`${imageNumber}.png`, { create: true });
         const imgWriter = await imgHandle.createWritable();
         await imgWriter.write(imgData);
     }
@@ -64,7 +64,7 @@ export async function createHanziStorageModel(): Promise<HanziStorageModel> {
             let promises = [];
             // Download & store training data
             for (let hanzi of HANZI_LIST) {
-                const currHanziDir = await trainDir.getDirectoryHandle(hanzi);
+                const currHanziDir = await trainDir.getDirectoryHandle(hanzi, { create: true });
                 for (let imageNumber = 1; imageNumber <= N_TRAIN_IMAGES; imageNumber++) {
                     if (await exists(currHanziDir, `${imageNumber}.png`, handleError)) handleSuccess(1);
                     else promises.push(
