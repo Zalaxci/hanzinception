@@ -78,7 +78,7 @@ export async function createHanziStorageModel(): Promise<HanziStorageModel> {
             }
             // Download & store test data
             for (let hanzi of HANZI_LIST) {
-                const currHanziDir = await testDir.getDirectoryHandle(hanzi);
+                const currHanziDir = await testDir.getDirectoryHandle(hanzi, { create: true });
                 for (let imageNumber = 1; imageNumber <= N_TEST_IMAGES; imageNumber++) {
                     if (await exists(currHanziDir, `${imageNumber}.png`, handleError)) handleSuccess(1);
                     else promises.push(
