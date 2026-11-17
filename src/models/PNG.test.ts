@@ -38,3 +38,17 @@ test("pixels of 20th and 30th row are correctly decoded", async () => {
     for (let i = 1; i < 50; i++)
         expect(pixels[25*50 + i], "30th row pixels should match what you get from python with opencv").toBeCloseTo(row30Reference[i]/255);
 })
+test("can load image to buffer with offset", async () => {
+    const png1 = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/学/26.png");
+    const png2 = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/学/32.png");
+    const pixels1 = new Float32Array(5000);
+    const pixels2 = new Float32Array(5000);
+    await png1.decompressAndDecodePixels(pixels1, 0);
+    await png2.decompressAndDecodePixels(pixels1, 2500);
+    await png1.decompressAndDecodePixels(pixels2, 2500);
+    await png2.decompressAndDecodePixels(pixels2, 0);
+    for (let i = 1; i < 2500; i++)
+        expect(pixels1[i], "png1 (学/26) data is the same if loaded with offset 0 or 2500").toEqual(pixels2[2500 + i]);
+    for (let i = 1; i < 2500; i++)
+        expect(pixels2[i], "png2 (学/32) data is the same if loaded with offset 0 or 2500").toEqual(pixels1[2500 + i]);
+})

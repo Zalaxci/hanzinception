@@ -102,20 +102,22 @@ export class PNGModel {
     const scanlineLength = this.nbytesPerPixel * w;
     const buffer = singlePass ? pixels : new Float32Array(scanlineLength * h);
     let row = 0;
-    let c = offset;
+    let c = 0;
+    this.dpos = 0;
+    const bufferOffset = singlePass ? offset : 0;
     while (row < h && this.dpos < this.decompressedData.length) {
       let byte: number, col: number, i: number, left: number, upper: number;
       switch (this.decompressedData[this.dpos++]) {
         case 0: // None
           for (i = 0; i < scanlineLength; i++)
-            buffer[c++] = this.decompressedData[this.dpos++];
+            buffer[bufferOffset + c++] = this.decompressedData[this.dpos++];
           break;
 
         case 1: // Sub
           for (i = 0; i < scanlineLength; i++) {
             byte = this.decompressedData[this.dpos++];
-            left = i < this.nbytesPerPixel ? 0 : buffer[c - this.nbytesPerPixel];
-            buffer[c++] = (byte + left) % 256;
+            left = i < this.nbytesPerPixel ? 0 : buffer[bufferOffset + c - this.nbytesPerPixel];
+            buffer[bufferOffset + c++] = (byte + left) % 256;
           }
           break;
 
@@ -125,12 +127,12 @@ export class PNGModel {
             col = (i - (i % this.nbytesPerPixel)) / this.nbytesPerPixel;
             upper =
               row &&
-              buffer[
+              buffer[bufferOffset + 
                 (row - 1) * scanlineLength +
                   col * this.nbytesPerPixel +
                   (i % this.nbytesPerPixel)
               ];
-            buffer[c++] = (upper + byte) % 256;
+            buffer[bufferOffset + c++] = (upper + byte) % 256;
           }
           break;
 
@@ -138,15 +140,15 @@ export class PNGModel {
           for (i = 0; i < scanlineLength; i++) {
             byte = this.decompressedData[this.dpos++];
             col = (i - (i % this.nbytesPerPixel)) / this.nbytesPerPixel;
-            left = i < this.nbytesPerPixel ? 0 : buffer[c - this.nbytesPerPixel];
+            left = i < this.nbytesPerPixel ? 0 : buffer[bufferOffset + c - this.nbytesPerPixel];
             upper =
               row &&
-              buffer[
+              buffer[bufferOffset + 
                 (row - 1) * scanlineLength +
                   col * this.nbytesPerPixel +
                   (i % this.nbytesPerPixel)
               ];
-            buffer[c++] = (byte + Math.floor((left + upper) / 2)) % 256;
+            buffer[bufferOffset + c++] = (byte + Math.floor((left + upper) / 2)) % 256;
           }
           break;
 
@@ -155,20 +157,20 @@ export class PNGModel {
             let paeth: number, upperLeft: number;
             byte = this.decompressedData[this.dpos++];
             col = (i - (i % this.nbytesPerPixel)) / this.nbytesPerPixel;
-            left = i < this.nbytesPerPixel ? 0 : buffer[c - this.nbytesPerPixel];
+            left = i < this.nbytesPerPixel ? 0 : buffer[bufferOffset + c - this.nbytesPerPixel];
 
             if (row === 0) {
               upper = upperLeft = 0;
             } else {
               upper =
-                buffer[
+                buffer[bufferOffset + 
                   (row - 1) * scanlineLength +
                     col * this.nbytesPerPixel +
                     (i % this.nbytesPerPixel)
                 ];
               upperLeft =
                 col &&
-                buffer[
+                buffer[bufferOffset + 
                   (row - 1) * scanlineLength +
                     (col - 1) * this.nbytesPerPixel +
                     (i % this.nbytesPerPixel)
@@ -188,7 +190,7 @@ export class PNGModel {
               paeth = upperLeft;
             }
 
-            buffer[c++] = (byte + paeth) % 256;
+            buffer[bufferOffset + c++] = (byte + paeth) % 256;
           }
           break;
 
@@ -201,7 +203,7 @@ export class PNGModel {
         let bufferPos = row * scanlineLength;
         for (i = 0; i < w; i++) {
           for (let j = 0; j < this.nbytesPerPixel; j++)
-            pixels[pixelsPos++] = buffer[bufferPos++];
+            pixels[offset + pixelsPos++] = buffer[bufferPos++];
           pixelsPos += (dx - 1) * this.nbytesPerPixel;
         }
       }
