@@ -10,7 +10,7 @@ test("parses IDAT succesfully", () => {
     expect(str).toBe("bullshitpng");
 })
 test("fetches PNG & retreives image data from PNG file correctly", async () => {
-    const png = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/一/42.png");
+    const png = await PNGModel.fromURL("http://localhost:5173/chinese-handwriting/Test/一/42.png");
     expect(png.imgData[png.filePos - 1], "before first byte you have IDAT").toBe(0x54); // it should be T
     expect(png.imgData[png.filePos], "first byte is correct").toBe(0x48);
     expect(png.imgData[png.filePos + 1], "second byte is correct").toBe(0xC7);
@@ -18,7 +18,7 @@ test("fetches PNG & retreives image data from PNG file correctly", async () => {
     expect(png.idatLength, "IDAT section length is correct").toBe(485 - 12); // IDAT section size is 485 according to https://omniviewer.org/ but 4 is IEND, 4 is CRC check and 4 is stuff after IEND
 })
 test("decompressing PNG data resolves without error", async () => {
-    const png = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Train/%E8%AF%BB/20.png");
+    const png = await PNGModel.fromURL("http://localhost:5173/chinese-handwriting/Train/%E8%AF%BB/20.png");
     await png.decompress();
 })
 test("pixels of 20th and 30th row are correctly decoded", async () => {
@@ -30,7 +30,7 @@ test("pixels of 20th and 30th row are correctly decoded", async () => {
                                             39,  50,  74,  81,  76,  83,  87,  94, 105,  92,  85, 105, 131,
                                            145, 153, 178, 177, 160, 152, 150, 123,  92,  72,  78,  95,  93,
                                             72,  69,  76,  74,  68,  84,  91,  70,  59,  79, 109 ]);
-    const png = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/一/42.png");
+    const png = await PNGModel.fromURL("http://localhost:5173/chinese-handwriting/Test/一/42.png");
     const pixels = new Float32Array(2500);
     await png.decompressAndDecodePixels(pixels);
     for (let i = 1; i < 50; i++)
@@ -39,8 +39,8 @@ test("pixels of 20th and 30th row are correctly decoded", async () => {
         expect(pixels[25*50 + i], "30th row pixels should match what you get from python with opencv").toBeCloseTo(row30Reference[i]/255);
 })
 test("can load image to buffer with offset", async () => {
-    const png1 = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/学/26.png");
-    const png2 = await PNGModel.fromURL("http://localhost:5173/assets/chinese-handwriting/Test/学/32.png");
+    const png1 = await PNGModel.fromURL("http://localhost:5173/chinese-handwriting/Test/学/26.png");
+    const png2 = await PNGModel.fromURL("http://localhost:5173/chinese-handwriting/Test/学/32.png");
     const pixels1 = new Float32Array(5000);
     const pixels2 = new Float32Array(5000);
     await png1.decompressAndDecodePixels(pixels1, 0);
