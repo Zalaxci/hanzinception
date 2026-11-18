@@ -3,9 +3,11 @@
 
 ***ΑΕΜ 4636 (pgkana@auth.gr)***
 
+Download the full project including the images by cloning the [github repository](https://github.com/Zalaxci/hanzinception) - currently private.
+
 ## Overview
 
-Different neural networks were coded in javascript and trained in the browser to classify handwritten chinese hanzi (汉字) included in the HSK1 exam. A simle CNN with 4 hidden convolutional and 3 pooling layers achieves an accuracy of 84-87%, while a more complex inception-style CNN achieves a higher accuracy of 90% and recognizes hanzi written on the canvas even if they don't correspond to the chinese calligraphic style of the training data. Images of the 178 HSK1 hanzi split into train and test sets is provided by CASIA HWDB and downloaded from [Kaggle](https://www.kaggle.com/datasets/vitaliikyzym/chinese-handwriting-recognition-hsk-1). To enable GPU-accelerated linear algebra and simplify neural network training [Jax.js](https://jax-js.com) was used, while [Svelte](https://svelte.dev), [Vite](https://vite.dev) and [Bun](https://bun.sh) were used as the UI framework, server and javascript runtime as well as package manager respectively. Image data is only downloaded once and then stored in the Origin Private Filesystem (OPFS) and to make training faster, images are stored in main memory and reused from epoch 2, while a custom PNG parser is used for efficient PNG parsing.
+Different neural networks were coded in javascript and trained in the browser to classify handwritten chinese hanzi (汉字) included in the HSK1 exam. A simple CNN with 4 hidden convolutional and 3 pooling layers achieves an accuracy of 84-87%, while a more complex inception-style CNN achieves a higher accuracy of 90% and recognizes hanzi written on the canvas even if they don't correspond to the chinese calligraphic style of the training data. Images of the 178 HSK1 hanzi split into train and test sets is provided by CASIA HWDB and downloaded from [Kaggle](https://www.kaggle.com/datasets/vitaliikyzym/chinese-handwriting-recognition-hsk-1). To enable GPU-accelerated linear algebra and simplify neural network training [Jax.js](https://jax-js.com) was used, while [Svelte](https://svelte.dev), [Vite](https://vite.dev) and [Bun](https://bun.sh) were used as the UI framework, server and javascript runtime as well as package manager respectively. Image data is only downloaded once and then stored in the Origin Private Filesystem (OPFS) and to make training faster, images are stored in main memory and reused from epoch 2, while a custom PNG parser is used for efficient PNG parsing.
 
 ## Try it online!!
 
@@ -26,7 +28,7 @@ The website is publically available on Firebase at [https://hanzinception.web.ap
 !["Inception" CNN recognizes the chinese character 前 written more quickly](./screenshots/inception/前-2.png)
 !["Inception" CNN recognizes the chinese character 话](./screenshots/inception/话.png)
 
-## ...orr run with bun
+## ...or run with bun
 
 Download bun from [bun.sh](https://bun.sh/) and run ```bun install``` followed by ```bun run dev``` - any other node package manager such as npm or pnpm ought to work too, in a similar fashion.
 
