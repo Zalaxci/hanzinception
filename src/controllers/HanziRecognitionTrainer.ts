@@ -21,6 +21,12 @@ function randomlyOrderNumbersUpToN(arr: number[]) {
     }
 }
 
+export interface NNTrainingConfiguration {
+    modelName: string
+    neuralNet: NeuralNetworkModel
+    batchSize: number
+    learningRate: number
+}
 export class HanziRecognitionTrainer {
     #batchSize: number
     #nhanzi: number
@@ -28,20 +34,21 @@ export class HanziRecognitionTrainer {
     #trainPixelBuffer: number[]
     #trainImageData: (number[] | undefined)[]
     #storage: HanziStorageModel
-    #neuralNets: NeuralNetworkModel[]
-    constructor(storage: HanziStorageModel, batchSize: number) {
-        this.#batchSize = batchSize;
+    #trainingConfigs: NNTrainingConfiguration[]
+    constructor(storage: HanziStorageModel) {
+        this.#storage = storage;
         this.#nhanzi = getTotalHanziCount();
         this.#imageSize = getImageSize();
-        // Temporary container for pixel data, capable of fitting batchSize images to avoid race condition when loading many images asynchronously
-        this.#trainPixelBuffer = new Array(this.#batchSize*this.#imageSize*this.#imageSize);
+        this.#batchSize = 0;
+        this.#trainPixelBuffer = [];
         // 2D array with rows equal to hanzi number & columns the images per hanzi
         this.#trainImageData = new Array(this.#nhanzi*N_TRAIN_IMAGES);
-        this.#storage = storage;
-        this.#neuralNets = [];
+        // Array of neural networks with their respective training configurations
+        this.#trainingConfigs = [];
     }
     destructor() {
-        for (let nn of this.#neuralNets) nn.destructor();
+        for (let { neuralNet } of this.#trainingConfigs)
+            neuralNet.destructor();
     }
     async #readTrainImageDataCached(iimg: number, bufferpos: number): Promise<void> {
         const npixels = this.#imageSize*this.#imageSize;
@@ -75,41 +82,45 @@ export class HanziRecognitionTrainer {
             }
         }
     }
-    addNN(nn: NeuralNetworkModel) {
-        if (!this.#neuralNets.includes(nn))
-            this.#neuralNets.push(nn);
+    addConfigurations(...configs: NNTrainingConfiguration[]) {
+        this.#trainingConfigs.push(...configs);
     }
     async initRandom() {
-        for (let nn of this.#neuralNets)
-            await nn.initRandom();
+        for (let { neuralNet } of this.#trainingConfigs)
+            await neuralNet.initRandom();
     }
-    async *trainAll(nepochs: number, learningRate: number, cutoffLoss: number = 0): AsyncGenerator<{imodel: number, metrics: NNTrainMetrics}> {
-        const nbatches = Math.ceil(N_TRAIN_IMAGES * this.#nhanzi / this.#batchSize);
-        const batchGenerator = this.#createBatchGenerator(this.#neuralNets.length*nepochs);
-        for (let [imodel, nn] of this.#neuralNets.entries())
-            for await (let metrics of nn.train(batchGenerator, nbatches, nepochs, learningRate, cutoffLoss))
-                yield { imodel, metrics };
+    async *trainAll(nepochs: number, cutoffLoss: number = 0): AsyncGenerator<{iconfig: number, metrics: NNTrainMetrics}> {
+        for (let [iconfig, config] of this.#trainingConfigs.entries()) {
+            this.#batchSize = config.batchSize;
+            const nbatches = Math.ceil(N_TRAIN_IMAGES * this.#nhanzi / this.#batchSize);
+            // Temporary container for pixel data, capable of fitting batchSize images to avoid race condition when loading many images asynchronously
+            this.#trainPixelBuffer = new Array(this.#batchSize*this.#imageSize*this.#imageSize);
+            // Generate random batches of specific batch size
+            const batchGenerator = this.#createBatchGenerator(nepochs);
+            for await (let metrics of config.neuralNet.train(batchGenerator, nbatches, nepochs, config.learningRate, cutoffLoss))
+                yield { iconfig, metrics };
+        }
     }
-    async testAll(updateTestLoss: (imodel: number, accuracy: number, loss: number) => void) {
+    async *testAll(): AsyncGenerator<{iconfig: number, accuracy: number, loss: number}> {
         const npixels = this.#imageSize*this.#imageSize;
         const testPixelBuffer = new Array(N_TEST_IMAGES*npixels) as number[];
-        const accuracies = new Float32Array(this.#neuralNets.length);
-        const losses = new Float32Array(this.#neuralNets.length);
+        const accuracies = new Float32Array(this.#trainingConfigs.length);
+        const losses = new Float32Array(this.#trainingConfigs.length);
         for (let ihanzi = 0; ihanzi < this.#nhanzi; ihanzi++) {
             for (let iimg = 0; iimg < N_TEST_IMAGES; iimg++) {
                 const png = await this.#storage.readFile(getHanzi(ihanzi), iimg + 1, true);
                 await png.decompressAndDecodePixels(testPixelBuffer, iimg*npixels);
             }
-            for (let [imodel, nn] of this.#neuralNets.entries()) {
+            for (let [iconfig, config] of this.#trainingConfigs.entries()) {
                 const batch =  np.array(testPixelBuffer, { dtype: np.float16, shape: [N_TEST_IMAGES, npixels]});
                 const labels = np.full([N_TEST_IMAGES], ihanzi, { dtype: np.uint32 });
-                const prediction = nn.predict(batch);
+                const prediction = config.neuralNet.predict(batch);
                 const loss = await prediction.loss(labels.ref).jsAsync();
                 const accuracy = await prediction.accuracy(labels);
                 prediction.destructor();
-                accuracies[imodel] = (accuracies[imodel]*ihanzi + accuracy)/(ihanzi + 1);
-                losses[imodel] = (losses[imodel]*ihanzi + loss)/(ihanzi + 1);
-                updateTestLoss(imodel, accuracies[imodel], losses[imodel]);
+                accuracies[iconfig] = (accuracies[iconfig]*ihanzi + accuracy)/(ihanzi + 1);
+                losses[iconfig] = (losses[iconfig]*ihanzi + loss)/(ihanzi + 1);
+                yield { iconfig, accuracy: accuracies[iconfig], loss: losses[iconfig] };
             }
         }
         

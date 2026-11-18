@@ -2,10 +2,10 @@
   import { onDestroy, onMount } from "svelte";
   import { defaultDevice, init as initJax } from "@jax-js/jax";
 
-  import type { NeuralNetworkModel, NNTrainMetrics } from "../models/NeuralNetwork";
+  import type { NNTrainMetrics } from "../models/NeuralNetwork";
   import { HanziRecognizerCNN, HanziRecognizerInception } from "../models/HanziRecognizer";
   import { getTotalHanziCount, type HanziStorageModel } from "../models/HanziStorage";
-  import { HanziRecognitionTrainer } from "../controllers/HanziRecognitionTrainer";
+  import { HanziRecognitionTrainer, type NNTrainingConfiguration } from "../controllers/HanziRecognitionTrainer";
   import HanziDrawingView from "./HanziDrawingView.svelte";
   import ImageDownloadView from "./ImageDownloadView.svelte";
 
@@ -13,11 +13,11 @@
 
   let stage: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 = $state(0);
   let stageMsg = $derived(getStateMsg(stage));
-  let hanziRecognizerNN: NeuralNetworkModel | null = $state(null);
+  let trainingConfigs: NNTrainingConfiguration[] = $state([]);
+  let selectedConfig = $state(0);
   let trainer: HanziRecognitionTrainer | null = $state(null);
-  let trainingMetrics: NNTrainMetrics | null = $state(null);
-  let testingLoss = $state(0);
-  let testingAccuracy = $state(0);
+  let trainingMetrics: NNTrainMetrics[] = $state([]);
+  let testingMetrics: { loss: number, accuracy: number }[] = $state([]);
 
   onMount(async function init() {
     const devices = await initJax();
@@ -61,38 +61,63 @@
   }
   async function loadStored() {
     stage = 2; // Creating model...
-    hanziRecognizerNN = new HanziRecognizerInception(getTotalHanziCount());
+    const inception = new HanziRecognizerInception(getTotalHanziCount());
+    trainingConfigs = [
+      {
+        modelName: "Inception",
+        neuralNet: inception,
+        batchSize: 80,
+        learningRate: 0.001,
+      },
+    ];
+    if (trainer) trainer.addConfigurations(...trainingConfigs);
     stage = 3; // Succesfully created hanzi inception model
-    await hanziRecognizerNN.loadWeights();
+    await inception.loadWeights();
     stage = 6 // Model trained!
   }
-  async function trainModel() {
+  async function trainModels() {
     if (!trainer) return;
     stage = 2; // Creating model...
-    hanziRecognizerNN = new HanziRecognizerCNN(getTotalHanziCount());
-    trainer.addNN(hanziRecognizerNN);
+    trainingConfigs = [
+      {
+        modelName: "Simple CNN",
+        neuralNet: new HanziRecognizerCNN(getTotalHanziCount()),
+        batchSize: 60,
+        learningRate: 0.001,
+      },
+      {
+        modelName: "Simple CNN",
+        neuralNet: new HanziRecognizerCNN(getTotalHanziCount()),
+        batchSize: 80,
+        learningRate: 0.0008,
+      },
+      {
+        modelName: "Simple CNN",
+        neuralNet: new HanziRecognizerCNN(getTotalHanziCount()),
+        batchSize: 80,
+        learningRate: 0.001,
+      },
+    ];
+    trainer.addConfigurations(...trainingConfigs);
     stage = 4; // Randomizing weights...
-    await hanziRecognizerNN.initRandom();
+    await trainer.initRandom();
     stage = 5; // Weights initialized, training...
-    for await (let m of trainer.trainAll(5, 0.001, 0.02))
-      trainingMetrics = m.metrics;
+    for await (let { iconfig, metrics } of trainer.trainAll(8, 0.02))
+      trainingMetrics[iconfig] = metrics;
     stage = 6; // Model trained!
   }
-  async function testModel() {
-    if (!trainer || !hanziRecognizerNN) return;
+  async function testModels() {
+    if (!trainer || trainingConfigs.length === 0) return;
     stage = 7; // Loading test data...
-    await trainer.testAll((i: number, accuracy: number, loss: number) => {
-      if (stage === 7) stage = 8; //Testing!
-      testingAccuracy = accuracy;
-      testingLoss = loss;
-    });
+    for await (let { iconfig, accuracy, loss } of trainer.testAll())
+      testingMetrics[iconfig] = { accuracy, loss };
     // Finished!
     stage = 9;
   }
   function notifyImagesDownloaded(storage: HanziStorageModel) {
     hanziStorage = storage;
-    trainer = new HanziRecognitionTrainer(hanziStorage, 80);
-    if (hanziRecognizerNN) trainer.addNN(hanziRecognizerNN);
+    trainer = new HanziRecognitionTrainer(hanziStorage);
+    trainer.addConfigurations(...trainingConfigs);
   }
 </script>
 
@@ -104,48 +129,67 @@
   {/if}
   <div>
     {#if stage === 1}<button onclick={loadStored}>Load stored weights!</button>{/if}
-    {#if stage === 1 && trainer}<button onclick={trainModel}>Train model!</button>{/if}
-    {#if stage === 6 && trainer}<button onclick={testModel}>Test model!</button>{/if}
+    {#if stage === 1 && trainer}<button onclick={trainModels}>Train model!</button>{/if}
+    {#if stage === 6 && trainer}<button onclick={testModels}>Test model!</button>{/if}
   </div>
-  {#if hanziRecognizerNN}
-    <HanziDrawingView model={hanziRecognizerNN}/>
+  {#if trainingConfigs[selectedConfig]}
+    <HanziDrawingView model={trainingConfigs[selectedConfig].neuralNet}/>
   {/if}
-  {#if trainer}
+  {#if stage >= 3}
+    <div id="configurations-view">
+      {#each trainingConfigs as config, i}
+        <span>Config {i + 1}: Model {config.modelName} with batch size {config.batchSize} & learning rate {config.learningRate}</span>
+        <button onclick={() => selectedConfig = i}>Select config {i + 1}!</button>
+        <br>
+      {/each}
+    </div>
     <div class="row">
-      {#if trainingMetrics}
+      {#if trainingMetrics.length > 0}
         <div id="training-metrics" class="section">
-          <h3>Training metrics:</h3>
+          <h3>Training metrics</h3>
           <table>
-            <tbody>
+            <thead>
               <tr>
+                <th>Configuration</th>
                 <th>Loss</th>
-                <td>{trainingMetrics.loss}</td>
-              </tr>
-              <tr>
                 <th>Epoch</th>
-                <td>{trainingMetrics.iepoch}</td>
-              </tr>
-              <tr>
                 <th>Batch</th>
-                <td>{trainingMetrics.ibatch}</td>
               </tr>
+            </thead>
+            <tbody>
+              {#each trainingMetrics as metric, i }
+                <tr>
+                  <th>Configuration {i + 1}: </th>
+                  <td>{metric.loss}</td>
+                  <td>{metric.iepoch}</td>
+                  <td>{metric.ibatch}</td>
+                </tr>
+              {/each}
             </tbody>
           </table>
         </div>
       {/if}
-      {#if stage >= 6}
+    </div>
+    <div class="row">
+      {#if testingMetrics.length > 0}
         <div id="training-metrics" class="section">
-          <h3>Testing metrics:</h3>
+          <h3>Testing metrics</h3>
           <table>
-            <tbody>
+            <thead>
               <tr>
+                <th>Configuration</th>
                 <th>Loss</th>
-                <td>{testingLoss}</td>
-              </tr>
-              <tr>
                 <th>Accuracy</th>
-                <td>{testingAccuracy}</td>
               </tr>
+            </thead>
+            <tbody>
+              {#each testingMetrics as metric, i }
+                <tr>
+                  <th>Configuration {i + 1}: </th>
+                  <td>{metric.loss}</td>
+                  <td>{metric.accuracy}</td>
+                </tr>
+              {/each}
             </tbody>
           </table>
         </div>
