@@ -1,4 +1,7 @@
 # In-Browser Handwritten Hanzi Recognition
+**Kali Ganatsa's project for Neural Networks course for the 8th semester of Informatics@AUTh**
+
+***ΑΕΜ 4636 (pgkana@auth.gr)***
 
 ## Overview
 
@@ -22,6 +25,10 @@ The website is publically available on Firebase at [https://hanzinception.web.ap
 !["Inception" CNN recognizes the chinese character 前 written like the computer font](./screenshots/inception/前.png)
 !["Inception" CNN recognizes the chinese character 前 written more quickly](./screenshots/inception/前-2.png)
 !["Inception" CNN recognizes the chinese character 话](./screenshots/inception/话.png)
+
+## ...orr run with bun
+
+Download bun from [bun.sh](https://bun.sh/) and run ```bun install``` followed by ```bun run dev``` - any other node package manager such as npm or pnpm ought to work too, in a similar fashion.
 
 ## Motivation
 
@@ -50,7 +57,8 @@ Finally, **"HanziRecognizerInception"** is inspired by GoogLeNet (or Inception v
 - **A 1x1 convolution** to compress channel space to just 100 channels
 - **4x4 average pooling** to compress pixel count to 2x2
 - **A fully connected layer** to map each of the resulting 400 values to the outputs with logsoftmax applied
-This took many hours to train and it crashed 3 times in total, 2 because all of the test data was being loaded in GPU memory, thus filling up VRAM until the AMDGPU driver crashed and I was logged out, and 1 due to cloudflare also lagging as I tried to upload the images to Pages but this large a number of files was not supported. Hence why I didn't try tuning the hyperparameters which would've yielded better results. Nonetheless, this final model doesn't just achieve better accuracy but actually recognize almost all hanzi I wrote, which would make it genuinely useful to search and learn hanzi should I decide to learn chinese.
+
+This took many hours to train and it crashed 3 times in total, 2 because all of the test data was being loaded in GPU memory, thus filling up VRAM until the AMDGPU driver crashed and I was logged out, and 1 due to cloudflare also lagging as I tried to upload the images to Pages but this large a number of files was not supported. Hence why I didn't try tuning the hyperparameters which would've yielded better results. Nonetheless, this final model doesn't just achieve better accuracy but actually recognizes almost all hanzi I wrote, which would make it genuinely useful to search and learn hanzi should I decide to learn chinese.
 
 ### Inception module architecture
 
